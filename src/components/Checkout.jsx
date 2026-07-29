@@ -64,29 +64,10 @@ export default function Checkout({ carrito, onConfirmar, onVolver }) {
     setProcesando(true);
 
     try {
-      // Generar ID del pedido
       const pedidoId = `VP-${Math.floor(Math.random() * 90000) + 10000}`;
 
-      // 1. Crear el pedido en la base de datos
-      const resPedido = await fetch(`${import.meta.env.VITE_API_URL}/pedidos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: pedidoId,
-          form,
-          carrito,
-          subtotal,
-          envio,
-          total: subtotal + envio.costo,
-        }),
-      });
-
-      if (!resPedido.ok) {
-        const err = await resPedido.json();
-        throw new Error(err.error || "Error al crear el pedido");
-      }
-
-      // 2. Crear preferencia de pago en MercadoPago
+      // Solo crear preferencia en MercadoPago
+      // El pedido se crea cuando MercadoPago confirma el pago via webhook
       const resPago = await fetch(`${import.meta.env.VITE_API_URL}/pagos/crear-preferencia`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -97,7 +78,7 @@ export default function Checkout({ carrito, onConfirmar, onVolver }) {
 
       const { init_point } = await resPago.json();
 
-      // 3. Redirigir a MercadoPago
+      // Redirigir a MercadoPago
       window.location.href = init_point;
 
     } catch (err) {

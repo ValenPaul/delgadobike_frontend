@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const { MercadoPagoConfig, Preference } = require("mercadopago");
+const { MercadoPagoConfig, Preference, Payment } = require("mercadopago");
+const pool = require("../db");
 require("dotenv").config();
 
 const client = new MercadoPagoConfig({
@@ -36,6 +37,14 @@ router.post("/crear-preferencia", async (req, res) => {
           name: form.nombre,
           email: form.email,
         },
+        // Guardamos todos los datos del pedido en metadata
+        // para poder crearlo cuando MercadoPago confirme el pago
+        metadata: {
+          pedido_id: pedidoId,
+          form: JSON.stringify(form),
+          carrito: JSON.stringify(carrito),
+          envio: JSON.stringify(envio),
+        },
         external_reference: pedidoId,
         back_urls: {
           success: `${process.env.FRONTEND_URL}/confirmacion`,
@@ -43,14 +52,100 @@ router.post("/crear-preferencia", async (req, res) => {
           pending: `${process.env.FRONTEND_URL}/confirmacion`,
         },
         auto_return: "approved",
-        statement_descriptor: "DelgadoBike",
+        notification_url: `${process.env.BACKEND_URL}/api/pagos/webhook`,
+        statement_descriptor: "VeloStore",
       },
     });
 
-    res.json({ init_point: result.init_point });
+    res.json({ init_point: result.init_point, pedidoId });
   } catch (err) {
     console.error("Error MercadoPago:", err);
     res.status(500).json({ error: "Error al crear preferencia de pago" });
+  }
+});
+
+// POST /api/pagos/webhook — MercadoPago avisa cuando se aprueba un pago
+router.post("/webhook", async (req, res) => {
+  const { type, data } = req.body;
+
+  // Solo procesamos notificaciones de pagos
+  if (type !== "payment") return res.sendStatus(200);
+
+  try {
+    const payment = new Payment(client);
+    const pagoData = await payment.get({ id: data.id });
+
+    // Solo crear pedido si el pago fue aprobado
+    if (pagoData.status !== "approved") return res.sendStatus(200);
+
+    // Recuperar datos del pedido desde metadata
+    const { pedido_id, form, carrito, envio } = pagoData.metadata;
+    const formData = JSON.parse(form);
+    const carritoData = JSON.parse(carrito);
+    const envioData = JSON.parse(envio);
+    const total = carritoData.reduce((a, i) => a + i.precio * i.cantidad, 0) + envioData.costo;
+
+    // Verificar que el pedido no exista ya (evitar duplicados)
+    const { rows: existe } = await pool.query(
+      "SELECT id FROM pedidos WHERE id = $1",
+      [pedido_id]
+    );
+    if (existe.length > 0) return res.sendStatus(200);
+
+    // Crear el pedido en la base de datos
+    const client2 = await pool.connect();
+    try {
+      await client2.query("BEGIN");
+
+      // Verificar stock
+      for (const item of carritoData) {
+        const { rows } = await client2.query(
+          "SELECT stock FROM productos WHERE id = $1 FOR UPDATE",
+          [item.id]
+        );
+        if (rows.length === 0) throw new Error(`Producto no encontrado`);
+        if (rows[0].stock < item.cantidad) throw new Error(`Stock insuficiente para ${item.nombre}`);
+      }
+
+      // Insertar pedido
+      await client2.query(
+        `INSERT INTO pedidos
+          (id, cliente, email, telefono, calle, numero, piso, localidad, provincia, codigo_postal, total, costo_envio, estado, mp_payment_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pendiente',$13)`,
+        [
+          pedido_id,
+          formData.nombre, formData.email, formData.telefono,
+          formData.calle, formData.numero, formData.piso,
+          formData.localidad, formData.provincia, formData.codigoPostal,
+          total, envioData.costo, data.id,
+        ]
+      );
+
+      // Insertar items y descontar stock
+      for (const item of carritoData) {
+        await client2.query(
+          `INSERT INTO pedido_items (pedido_id, producto_id, nombre, cantidad, precio_unit)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [pedido_id, item.id, item.nombre, item.cantidad, item.precio]
+        );
+        await client2.query(
+          "UPDATE productos SET stock = stock - $1 WHERE id = $2",
+          [item.cantidad, item.id]
+        );
+      }
+
+      await client2.query("COMMIT");
+    } catch (err) {
+      await client2.query("ROLLBACK");
+      throw err;
+    } finally {
+      client2.release();
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("Error webhook:", err);
+    res.sendStatus(500);
   }
 });
 
