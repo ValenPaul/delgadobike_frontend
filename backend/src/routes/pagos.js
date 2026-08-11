@@ -3,6 +3,7 @@ const router = express.Router();
 const { MercadoPagoConfig, Preference, Payment } = require("mercadopago");
 const pool = require("../db");
 require("dotenv").config();
+const { enviarConfirmacionCliente, enviarNotificacionAdmin } = require("../email");
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
@@ -142,8 +143,36 @@ router.post("/webhook", async (req, res) => {
       client2.release();
     }
 
+    // Enviar emails de confirmación
+    try {
+      const { rows: pedidoCompleto } = await pool.query(
+        `SELECT p.*, 
+          json_agg(json_build_object(
+            'nombre', pi.nombre,
+            'cantidad', pi.cantidad,
+            'precio_unit', pi.precio_unit
+          )) as items
+        FROM pedidos p
+        JOIN pedido_items pi ON pi.pedido_id = p.id
+        WHERE p.id = $1
+        GROUP BY p.id`,
+        [pedido_id]
+      );
+      if (pedidoCompleto.length > 0) {
+        await Promise.all([
+          enviarConfirmacionCliente(pedidoCompleto[0]),
+          enviarNotificacionAdmin(pedidoCompleto[0]),
+        ]);
+      }
+    } catch (emailErr) {
+      // No rompemos el flujo si el email falla
+      console.error("Error enviando emails:", emailErr);
+    }
+
     res.sendStatus(200);
-  } catch (err) {
+
+  } 
+    catch (err) {
     console.error("Error webhook:", err);
     res.sendStatus(500);
   }

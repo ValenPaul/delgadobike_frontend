@@ -14,7 +14,8 @@
     "mercadopago": "^2.0.15",
     "multer": "^2.2.0",
     "multer-storage-cloudinary": "^4.0.0",
-    "pg": "^8.11.5"
+    "pg": "^8.11.5",
+    "resend": "^6.18.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
