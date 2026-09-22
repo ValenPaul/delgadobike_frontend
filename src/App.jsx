@@ -7,6 +7,9 @@ import Checkout from "./components/Checkout";
 import Confirmacion from "./components/Confirmacion";
 import Admin from "./components/Admin";
 
+import Nosotros from "./components/Nosotros";
+import Contacto from "./components/Contacto";
+
 const API = import.meta.env.VITE_API_URL;
 
 export default function App() {
@@ -23,6 +26,8 @@ export default function App() {
     if (path === "/admin") return "admin";
     if (path === "/checkout") return "checkout";
     if (path === "/confirmacion") return "confirmacion";
+    if (path === "/nosotros") return "nosotros";
+    if (path === "/contacto") return "contacto";
     return "inicio";
   };
 
@@ -34,6 +39,8 @@ export default function App() {
       checkout: "/checkout",
       confirmacion: "/confirmacion",
       admin: "/admin",
+      nosotros: "/nosotros",
+      contacto: "/contacto",
     };
     window.history.pushState({}, "", rutas[nuevaVista] || "/");
     setVista(nuevaVista);
@@ -226,6 +233,8 @@ export default function App() {
         cantidadItems={carrito.reduce((a, i) => a + i.cantidad, 0)}
         onAbrirCarrito={() => setCarritoAbierto(true)}
         onInicio={() => navegarA("inicio")}
+        onNosotros={() => navegarA("nosotros")}
+        onContacto={() => navegarA("contacto")}
       />
 
       {vista === "inicio" && (
@@ -249,6 +258,9 @@ export default function App() {
           onVolver={() => navegarA("inicio")}
         />
       )}
+
+      {vista === "nosotros" && <Nosotros />}
+      {vista === "contacto" && <Contacto />}
 
       <Carrito
         abierto={carritoAbierto}
