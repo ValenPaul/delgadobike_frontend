@@ -8,7 +8,7 @@
 ## Estado (última actualización: 2026-10-22)
 - **Ronda "Envíos Andreani manuales" completa (DB → backend → frontend) + DEPLOY A PRODUCCIÓN 2026-10-22**: los proyectos de Vercel están **conectados a GitHub** → `git push` a `main` deploya solo (backend `d3f83d8`, frontend `73d54bd`). Verificado por API en prod: campos nuevos en productos, cotizador real, auth 401, botón "Volver a la tienda" en el bundle.
 - Nuevo modelo: **el cliente siempre paga el envío real** — tarifas por franja de peso editables desde el admin, opcionales (seguro $17.800, express $12.500), un solo envío por carrito. Sin API: el admin genera el envío en el portal de Andreani, pega el tracking y despacha desde el panel.
-- **Falta en Vercel**: env vars `AUTH_SECRET`, `ADMIN_USER`, `ADMIN_PASS` (hoy el login del admin en prod da 500) + compra real de prueba en prod. Pagos MP OK (tarjetas de prueba).
+- **E2E real verificado 2026-10-22 (producción)**: compra `VP-61942` → `dni` + `envio_desglose` + `envio_cobrado` correctos, stock descontado, webhook #5 (5/5 OK) y **llegaron los 2 emails** (comprador + vendedor). Env vars del admin seteadas en Vercel y login 200 en prod.
 - **El `.env` local apunta a `localhost:3001`** → dev local usa el backend local, pero **la BD de Neon es la de producción**: cuidado con escrituras de prueba (borrar después).
 - MCPs: `playwright` (local) + `context7`, `vercel`, `neon`, `mercadopago` (remotos; MP con OAuth desde 2026-10-21, cuenta con las apps `delgadob` id 2048075409473562 y `TestApp-3a223d31`; para cambiar de cuenta: `opencode mcp logout mercadopago`). Agentes: `Coordinador` (primary) + `AgFrontend`, `AgBackend`, `AgDataBase`.
 - Ronda anterior (2026-10-15): auth del admin, limpieza, SEO, fix de crash — verificación 19/19.
@@ -29,9 +29,9 @@
 1. **Cargar peso/dimensiones reales de los 8 productos** (hoy 0 → peso de reserva → todos cotizan $56.500).
 2. **Precio real de la franja "Bici en caja"** (placeholder $56.500; se edita desde Admin → Tarifas).
 3. ~~Token MP + `invalid_auto_return`~~ → **resuelto y desplegado 2026-10-22** (token válido; `auto_return` omitido con back_urls localhost; fix ya en prod).
-4. **Pago real con el flujo NUEVO (dni + desglose) sin probar**: `VP-46306` (21/10) fue flujo **viejo** desde Vercel (sin dni/desglose, envío simulado $5752). Compra **local** no crea pedido: MP no entrega webhooks a `localhost` → probar en prod una vez seteadas las env vars del admin.
-5. **Resend en modo testing confirmado** (API `GET /domains` → vacío): el vendedor sí recibe (`EMAIL_ADMIN` = dueño de la cuenta), el comprador real no. Falta verificar un dominio propio en Resend y cambiar `EMAIL_FROM` (Vercel + local). Bug corregido 10-22: los fallos de email se silenciaban.
-6. ~~Deploy a Vercel~~ → **hecho 2026-10-22** (los proyectos están conectados a GitHub: `git push` a `main` deploya solo). Solo faltan las env vars `AUTH_SECRET`, `ADMIN_USER`, `ADMIN_PASS` en el panel de Vercel (secretos → las pega el usuario).
+4. ~~Pago real con el flujo nuevo~~ → **resuelto 2026-10-22**: `VP-61942` desde producción, con `dni`, `envio_desglose` y `envio_cobrado`. (Compra local no crea pedido: MP no entrega webhooks a `localhost` → probar en prod o con túnel.)
+5. **Resend sigue en modo testing** (`GET /domains` → vacío): los 2 mails de la compra de prueba llegaron porque **ambas casillas son tuyas** (el comprador de prueba es el dueño de la cuenta Resend). Para que **clientes reales** reciban: verificar un dominio propio en Resend y cambiar `EMAIL_FROM` (Vercel + local). Bug corregido 10-22: los fallos de email se silenciaban.
+6. ~~Deploy a Vercel~~ → **hecho 2026-10-22**: conectados a GitHub (`git push` a `main` deploya solo) + env vars `AUTH_SECRET`/`ADMIN_USER`/`ADMIN_PASS` seteadas (login 200 en prod).
 7. WhatsApp real (`wa.me` placeholder) · sesión del admin no persiste al refrescar · tokens sin expiración · credenciales muertas en `src/datos.js` · imagen por panel sin probar e2e.
 8. Futuro: Andreani "Colecta por domicilio" / "Andreani Envíos" con link de pago al cliente (investigado, no implementado).
 
