@@ -6,9 +6,9 @@
 > - Actualizar la fecha en "Estado" cada vez que se modifique.
 
 ## Estado (última actualización: 2026-10-22)
-- **Ronda "Envíos Andreani manuales" completa (DB → backend → frontend). Verificación E2E OK + `npm run build` limpio.**
+- **Ronda "Envíos Andreani manuales" completa (DB → backend → frontend) + DEPLOY A PRODUCCIÓN 2026-10-22**: los proyectos de Vercel están **conectados a GitHub** → `git push` a `main` deploya solo (backend `d3f83d8`, frontend `73d54bd`). Verificado por API en prod: campos nuevos en productos, cotizador real, auth 401, botón "Volver a la tienda" en el bundle.
 - Nuevo modelo: **el cliente siempre paga el envío real** — tarifas por franja de peso editables desde el admin, opcionales (seguro $17.800, express $12.500), un solo envío por carrito. Sin API: el admin genera el envío en el portal de Andreani, pega el tracking y despacha desde el panel.
-- Frontend y backend desplegados en Vercel; **los cambios de esta ronda viven solo en local** (falta deploy). Pagos MP OK (tarjetas de prueba).
+- **Falta en Vercel**: env vars `AUTH_SECRET`, `ADMIN_USER`, `ADMIN_PASS` (hoy el login del admin en prod da 500) + compra real de prueba en prod. Pagos MP OK (tarjetas de prueba).
 - **El `.env` local apunta a `localhost:3001`** → dev local usa el backend local, pero **la BD de Neon es la de producción**: cuidado con escrituras de prueba (borrar después).
 - MCPs: `playwright` (local) + `context7`, `vercel`, `neon`, `mercadopago` (remotos; MP con OAuth desde 2026-10-21, cuenta con las apps `delgadob` id 2048075409473562 y `TestApp-3a223d31`; para cambiar de cuenta: `opencode mcp logout mercadopago`). Agentes: `Coordinador` (primary) + `AgFrontend`, `AgBackend`, `AgDataBase`.
 - Ronda anterior (2026-10-15): auth del admin, limpieza, SEO, fix de crash — verificación 19/19.
@@ -23,14 +23,15 @@
 - Frontend: "Envío $X" en cards del catálogo, línea de envío + total en carrito, checkout con checkboxes seguro/express (total dinámico), DNI y teléfono obligatorios; simulación `4500 + random` eliminada. `/confirmacion` muestra desglose real.
 - Admin: pestañas **Tarifas de envío** (franjas + opcionales) y **Despachos** (copiar datos para el portal, tracking + método, costo real + margen, "Abrir Andreani") + campos de peso/dimensiones en productos.
 - Auth real del admin (token HMAC, rutas de escritura protegidas); `GET /pedidos` optimizado; `pool.on("error")`; SEO; logo; `/confirmacion` con snapshot; `statement_descriptor = "DelgadoBike"`.
+- `/confirmacion` con estado vacío + botón **"Volver a la tienda"** (el carrito ya quedaba vacío por la recarga de página). Emails Resend: `Promise.allSettled` en el webhook y chequeo de `error` del SDK (antes fallaban en silencio).
 
 ## Pendientes
 1. **Cargar peso/dimensiones reales de los 8 productos** (hoy 0 → peso de reserva → todos cotizan $56.500).
 2. **Precio real de la franja "Bici en caja"** (placeholder $56.500; se edita desde Admin → Tarifas).
-3. ~~`MP_ACCESS_TOKEN` inválido + bug local `invalid_auto_return`~~ → **resuelto 2026-10-22**: token renovado y válido (200 en `/users/me`, MLA) y **fix aplicado en `pagos.js`** (`auto_return` no se envía si `FRONTEND_URL` es localhost; MP lo rechazaba con back_urls locales). Verificado: local 200 con `init_point` sin `auto_return`; prod simulada 200 con `auto_return: "approved"`. **Falta deploy del backend a Vercel** para que el fix viva en prod (aunque en prod ya funcionaba). Pendiente de probar el pago E2E completo.
-4. **Pago real de MP con el desglose de envío nuevo sin probar** (el E2E no pudo generar pagos reales; el shape se validó leyendo el webhook). Recién poder probarlo una vez renovado el token.
-5. **Resend en modo testing** → solo recibe el dueño de la cuenta; verificar envío real de mails (tracking incluido).
-6. **Deploy a Vercel**: setear en el backend `AUTH_SECRET`, `ADMIN_USER`, `ADMIN_PASS`, `BACKEND_URL` y redeploy de frontend + backend.
+3. ~~Token MP + `invalid_auto_return`~~ → **resuelto y desplegado 2026-10-22** (token válido; `auto_return` omitido con back_urls localhost; fix ya en prod).
+4. **Pago real con el flujo NUEVO (dni + desglose) sin probar**: `VP-46306` (21/10) fue flujo **viejo** desde Vercel (sin dni/desglose, envío simulado $5752). Compra **local** no crea pedido: MP no entrega webhooks a `localhost` → probar en prod una vez seteadas las env vars del admin.
+5. **Resend en modo testing confirmado** (API `GET /domains` → vacío): el vendedor sí recibe (`EMAIL_ADMIN` = dueño de la cuenta), el comprador real no. Falta verificar un dominio propio en Resend y cambiar `EMAIL_FROM` (Vercel + local). Bug corregido 10-22: los fallos de email se silenciaban.
+6. ~~Deploy a Vercel~~ → **hecho 2026-10-22** (los proyectos están conectados a GitHub: `git push` a `main` deploya solo). Solo faltan las env vars `AUTH_SECRET`, `ADMIN_USER`, `ADMIN_PASS` en el panel de Vercel (secretos → las pega el usuario).
 7. WhatsApp real (`wa.me` placeholder) · sesión del admin no persiste al refrescar · tokens sin expiración · credenciales muertas en `src/datos.js` · imagen por panel sin probar e2e.
 8. Futuro: Andreani "Colecta por domicilio" / "Andreani Envíos" con link de pago al cliente (investigado, no implementado).
 
@@ -39,6 +40,9 @@
 - El precio de envío sale **siempre** de `POST /api/envios/cotizar`: nunca hardcodear montos en el frontend.
 - `tarifas_envio.id` se inserta con `MAX(id)+1` (la secuencia no avanza con seeds de id explícito).
 - El pedido se crea solo por webhook → no implementar `POST /pedidos`.
+- **MP no entrega webhooks a `localhost`** (ni siquiera figura como fallido en el historial): una compra local nunca crea pedido → probar en prod o con túnel (ngrok/cloudflared).
+- **Vercel está conectado a GitHub**: `git push` a `main` deploya prod automáticamente (ambos proyectos). CLI local sin token; MCP vercel requiere re-login (`/mcps`).
+- El SDK de Resend **no lanza excepciones**: devuelve `{ data, error }` → si no se revisa `error`, los emails fallan en silencio.
 
 ## Decisiones tomadas
 - Sin react-router ni librerías UI: navegación por estado `vista` + `pushState`.
