@@ -5,6 +5,21 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const LOGO_URL = "https://res.cloudinary.com/jgnijxf6/image/upload/v1785875376/logo-sin-fondo-delgadobike_zugg2u.png";
 
+// La API de Resend NO lanza excepción cuando rechaza un envío: devuelve { data, error }.
+// Sin este chequeo el error quedaba silenciado y el caller no logueaba nada.
+// `contexto` identifica QUÉ email es (cliente/admin/tracking, pedido y destino);
+// el motivo lo aporta Resend. Nunca incluimos API keys ni otros secretos.
+function revisarEnvio(respuesta, contexto) {
+  const error = respuesta && respuesta.error;
+  if (error) {
+    const detalle = [error.name, error.statusCode, error.message]
+      .filter(Boolean)
+      .join(" · ");
+    throw new Error(`Falló el email ${contexto}: ${detalle}`);
+  }
+  return (respuesta && respuesta.data) || null;
+}
+
 // ── Email al cliente ────────────────────────────────────────────────────────
 async function enviarConfirmacionCliente(pedido) {
   const { id, cliente, email, items, total, costo_envio, localidad, provincia } = pedido;
@@ -112,12 +127,13 @@ async function enviarConfirmacionCliente(pedido) {
     </html>
   `;
 
-  await resend.emails.send({
+  const respuesta = await resend.emails.send({
     from: process.env.EMAIL_FROM,
     to: email,
     subject: `✅ Pedido confirmado #${id} — Delgado Bike Online`,
     html,
   });
+  return revisarEnvio(respuesta, `de confirmación al cliente (pedido ${id}, destino: ${email})`);
 }
 
 // ── Email al admin ──────────────────────────────────────────────────────────
@@ -178,12 +194,111 @@ async function enviarNotificacionAdmin(pedido) {
     </html>
   `;
 
-  await resend.emails.send({
+  const respuesta = await resend.emails.send({
     from: process.env.EMAIL_FROM,
     to: process.env.EMAIL_ADMIN,
     subject: `🛒 Nuevo pedido #${id} — $${total.toLocaleString("es-AR")}`,
     html,
   });
+  return revisarEnvio(respuesta, `de notificación al admin (pedido ${id}, destino: ${process.env.EMAIL_ADMIN})`);
 }
 
-module.exports = { enviarConfirmacionCliente, enviarNotificacionAdmin };
+// ── Email de tracking al cliente ────────────────────────────────────────────
+// Se envía cuando el admin carga el número de seguimiento de Andreani.
+// El fallo de este email NUNCA debe romper el flujo: lo maneja el caller.
+async function enviarTrackingCliente(pedido, numeroSeguimiento) {
+  const { id, cliente, email, localidad, provincia, envio_metodo } = pedido;
+  const numero = String(numeroSeguimiento);
+  const link = `https://andreani.com/envio/${encodeURIComponent(numero)}`;
+
+  const metodos = {
+    sucursal: "Retiro en sucursal Andreani",
+    domicilio: "Entrega a domicilio",
+    link_pago: "Envío pagado por link",
+  };
+  const metodoTexto = metodos[envio_metodo] || "Envío Andreani";
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="margin:0; padding:0; background:#F7F7F5; font-family: 'Segoe UI', Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F7F5; padding: 40px 20px;">
+        <tr><td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px; width:100%;">
+
+            <!-- HEADER -->
+            <tr><td style="background:#0066FF; border-radius:16px 16px 0 0; padding: 32px; text-align:center;">
+              <img src="${LOGO_URL}" alt="Delgado Bike Online" style="height:60px; width:auto;" />
+            </td></tr>
+
+            <!-- CUERPO -->
+            <tr><td style="background:#fff; padding: 40px 40px 24px;">
+              <h1 style="margin:0 0 8px; font-size:24px; font-weight:800; color:#111;">
+                🚚 Tu pedido está en camino
+              </h1>
+              <p style="margin:0 0 24px; font-size:15px; color:#555; line-height:1.6;">
+                Hola ${escaparHTML(String(cliente || "").split(" ")[0])}, tu pedido
+                <strong>#${escaparHTML(String(id))}</strong> ya fue despachado por Andreani.
+              </p>
+
+              <!-- NÚMERO DE SEGUIMIENTO -->
+              <div style="background:#F0F5FF; border-left: 4px solid #0066FF; border-radius:8px; padding:16px 20px; margin-bottom:24px;">
+                <p style="margin:0; font-size:13px; color:#0066FF; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Número de seguimiento</p>
+                <p style="margin:4px 0 0; font-size:22px; font-weight:800; color:#111;">${escaparHTML(numero)}</p>
+              </div>
+
+              <p style="margin:0 0 16px; font-size:14px; color:#555; line-height:1.6;">
+                Modalidad: <strong>${escaparHTML(metodoTexto)}</strong>.<br/>
+                Entrega estimada en ${localidad ? escaparHTML(localidad) + ", " + escaparHTML(String(provincia || "")) : "tu dirección"}.
+              </p>
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 4px;">
+                <tr><td align="center" style="padding:12px 0;">
+                  <a href="${link}" style="display:inline-block; background:#0066FF; color:#fff; text-decoration:none; font-weight:700; font-size:15px; padding:14px 28px; border-radius:10px;">
+                    Seguir mi envío en Andreani
+                  </a>
+                </td></tr>
+              </table>
+
+              <p style="margin:8px 0 0; font-size:13px; color:#888; word-break:break-all;">
+                O copiá el link: <a href="${link}" style="color:#0066FF;">${escaparHTML(link)}</a>
+              </p>
+            </td></tr>
+
+            <!-- FOOTER -->
+            <tr><td style="background:#111; border-radius:0 0 16px 16px; padding:28px 40px; text-align:center;">
+              <p style="margin:0 0 8px; font-size:13px; color:#888;">
+                ¿Tenés alguna consulta? Escribinos por WhatsApp o respondé este email.
+              </p>
+              <p style="margin:0; font-size:12px; color:#555;">
+                © Delgado Bike Online. Todos los derechos reservados.
+              </p>
+            </td></tr>
+
+          </table>
+        </td></tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const respuesta = await resend.emails.send({
+    from: process.env.EMAIL_FROM,
+    to: email,
+    subject: `🚚 Tu pedido ${id} está en camino`,
+    html,
+  });
+  return revisarEnvio(respuesta, `de tracking al cliente (pedido ${id}, destino: ${email})`);
+}
+
+// Escapa caracteres especiales de HTML para armar el cuerpo con seguridad.
+function escaparHTML(texto) {
+  return String(texto).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c)
+  );
+}
+
+module.exports = { enviarConfirmacionCliente, enviarNotificacionAdmin, enviarTrackingCliente };

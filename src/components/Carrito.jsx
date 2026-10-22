@@ -1,5 +1,50 @@
+import { useState, useEffect, useRef } from "react";
+
+const API = import.meta.env.VITE_API_URL;
+
 export default function Carrito({ abierto, onCerrar, items, onCambiarCantidad, onCheckout }) {
   const total = items.reduce((a, i) => a + i.precio * i.cantidad, 0);
+
+  // Última cotización del envío para TODO el carrito (POST /envios/cotizar)
+  const [envio, setEnvio] = useState(null);
+
+  // Firma del carrito (ids + cantidades): cotizamos solo cuando cambia,
+  // así los re-renders del drawer no disparan llamadas nuevas.
+  const firma = items.map((i) => `${i.id}:${i.cantidad}`).join(",");
+  const ultimaFirma = useRef("");
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setEnvio(null);
+      ultimaFirma.current = "";
+      return;
+    }
+    if (ultimaFirma.current === firma) return;
+    ultimaFirma.current = firma;
+
+    let cancelado = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API}/envios/cotizar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: items.map((i) => ({ producto_id: i.id, cantidad: i.cantidad })),
+          }),
+        });
+        if (!res.ok) throw new Error(`Error ${res.status}`);
+        const data = await res.json();
+        if (!cancelado) setEnvio(data);
+      } catch (err) {
+        // Si falla la cotización no rompemos el carrito: el total se muestra
+        // sin envío y el checkout vuelve a cotizar antes de pagar.
+        console.error("Error cotizando envío del carrito:", err);
+        if (!cancelado) setEnvio(null);
+      }
+    })();
+
+    return () => { cancelado = true; };
+  }, [firma, items]);
 
   return (
     <>
@@ -38,9 +83,17 @@ export default function Carrito({ abierto, onCerrar, items, onCambiarCantidad, o
             </ul>
 
             <div className="carrito-footer">
+              <div className="carrito-linea-envio">
+                <span>
+                  Envío <span className="carrito-envio-franja">{envio ? envio.etiqueta : "a calcular"}</span>
+                </span>
+                <span className="carrito-envio-monto">
+                  {envio ? `$${envio.total.toLocaleString("es-AR")}` : "—"}
+                </span>
+              </div>
               <div className="carrito-total">
-                <span>Total</span>
-                <strong>${total.toLocaleString("es-AR")}</strong>
+                <span>Total con envío</span>
+                <strong>${(total + (envio ? envio.total : 0)).toLocaleString("es-AR")}</strong>
               </div>
               <button className="checkout-btn" onClick={onCheckout}>
                 Continuar con la compra →

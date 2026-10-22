@@ -57,37 +57,27 @@ export default function App() {
 
 
   // Manejar regreso desde MercadoPago
+  // Checkout guarda un snapshot del pedido en sessionStorage antes de
+  // redirigir; acá lo leemos en vez de pedirle el último pedido al backend
+  // (eso podía mostrar pedidos ajenos y armaba el form incompleto).
   useEffect(() => {
-    if (window.location.pathname === "/confirmacion") {
-      // Traer el último pedido para mostrar en la pantalla de confirmación
-      const cargarUltimoPedido = async () => {
-        try {
-          const res = await fetch(`${API}/pedidos`);
-          const pedidos = await res.json();
-          if (pedidos.length > 0) {
-            const ultimo = pedidos[0]; // el más reciente
-            setPedidoConfirmado({
-              numeroPedido: ultimo.id,
-              form: { 
-                nombre: ultimo.cliente, 
-                email: ultimo.email,
-                localidad: ultimo.localidad,
-                provincia: ultimo.provincia,
-              },
-              carrito: ultimo.items.map(i => ({ 
-                nombre: i.nombre, 
-                cantidad: i.cantidad, 
-                precio: i.precio_unit 
-              })),
-              envio: { costo: ultimo.costo_envio, plazo: "3 a 5 días hábiles" },
-              total: ultimo.total,
-            });
-          }
-        } catch (err) {
-          console.error(err);
-        }
-      };
-      cargarUltimoPedido();
+    if (window.location.pathname !== "/confirmacion") return;
+    try {
+      const crudo = sessionStorage.getItem("pedidoConfirmado");
+      if (!crudo) return;
+      const snap = JSON.parse(crudo);
+      if (!snap || !snap.form || !snap.carrito || !snap.envio) return;
+
+      const subtotal = snap.carrito.reduce((a, i) => a + i.precio * i.cantidad, 0);
+      setPedidoConfirmado({
+        numeroPedido: snap.pedidoId,
+        form: snap.form,
+        carrito: snap.carrito,
+        envio: snap.envio,
+        total: typeof snap.total === "number" ? snap.total : subtotal + (snap.envio.costo || 0),
+      });
+    } catch (err) {
+      console.error("Error leyendo snapshot de confirmación:", err);
     }
   }, []);
 
@@ -143,31 +133,23 @@ export default function App() {
     );
   };
 
-  const confirmarPedido = async (datos) => {
-    try {
-      await fetch(`${API}/pedidos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(datos),
-      });
-
-      const [resProductos, resPedidos] = await Promise.all([
-        fetch(`${API}/productos`),
-        fetch(`${API}/pedidos`),
-      ]);
-      setProductos(await resProductos.json());
-      setPedidos(await resPedidos.json());
-
-      setPedidoConfirmado(datos);
-      setCarrito([]);
-      navegarA("confirmacion");
-    } catch (err) {
-      console.error("Error confirmando pedido:", err);
-      alert("Hubo un error al procesar el pedido. Intentá de nuevo.");
-    }
+  // ── Funciones del admin ────────────────────────────────────────────────────
+  // Cabecera de autenticación para las 4 escrituras del panel admin.
+  const authHeaders = () => {
+    const token = localStorage.getItem("adminToken");
+    return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
-  // ── Funciones del admin ────────────────────────────────────────────────────
+  // Si el backend responde 401, el token guardado ya no sirve.
+  const manejar401 = (res) => {
+    if (res.status === 401) {
+      localStorage.removeItem("adminToken");
+      alert("Tu sesión expiró o el token no es válido. Volvé a ingresar en el panel.");
+      return true;
+    }
+    return false;
+  };
+
   const actualizarProductos = async (accion, datos, imagen) => {
     try {
       const body = new FormData();
@@ -176,30 +158,44 @@ export default function App() {
       });
       if (imagen) body.append("imagen", imagen);
 
+      let res;
       if (accion === "crear") {
-        await fetch(`${API}/productos`, { method: "POST", body });
+        res = await fetch(`${API}/productos`, { method: "POST", headers: authHeaders(), body });
       } else if (accion === "editar") {
-        await fetch(`${API}/productos/${datos.id}`, { method: "PUT", body });
+        res = await fetch(`${API}/productos/${datos.id}`, { method: "PUT", headers: authHeaders(), body });
       } else if (accion === "eliminar") {
-        await fetch(`${API}/productos/${datos.id}`, { method: "DELETE" });
+        res = await fetch(`${API}/productos/${datos.id}`, { method: "DELETE", headers: authHeaders() });
       }
+      if (res && manejar401(res)) return;
 
-      const res = await fetch(`${API}/productos`);
-      setProductos(await res.json());
+      const resLista = await fetch(`${API}/productos`);
+      setProductos(await resLista.json());
     } catch (err) {
       console.error("Error actualizando producto:", err);
     }
   };
 
+  // Recargar la lista de pedidos (lo usa el admin tras despachar o cargar
+  // tracking/costo de envío, para que la sección Pedidos quede al día).
+  const recargarPedidos = async () => {
+    try {
+      const resLista = await fetch(`${API}/pedidos`);
+      setPedidos(await resLista.json());
+    } catch (err) {
+      console.error("Error recargando pedidos:", err);
+    }
+  };
+
   const actualizarEstadoPedido = async (id, estado) => {
     try {
-      await fetch(`${API}/pedidos/${id}/estado`, {
+      const res = await fetch(`${API}/pedidos/${id}/estado`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ estado }),
       });
-      const res = await fetch(`${API}/pedidos`);
-      setPedidos(await res.json());
+      if (manejar401(res)) return;
+      const resLista = await fetch(`${API}/pedidos`);
+      setPedidos(await resLista.json());
     } catch (err) {
       console.error("Error actualizando estado:", err);
     }
@@ -222,6 +218,7 @@ export default function App() {
         pedidos={pedidos}
         onActualizarProductos={actualizarProductos}
         onActualizarEstadoPedido={actualizarEstadoPedido}
+        onRecargarPedidos={recargarPedidos}
         onSalir={() => navegarA("inicio")}
       />
     );
@@ -247,7 +244,6 @@ export default function App() {
       {vista === "checkout" && (
         <Checkout
           carrito={carrito}
-          onConfirmar={confirmarPedido}
           onVolver={() => navegarA("inicio")}
         />
       )}

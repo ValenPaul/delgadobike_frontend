@@ -418,6 +418,12 @@ ul { list-style: none; }
   transition: all 0.2s; box-shadow: 0 4px 20px #0066FF40;
 }
 .volver-inicio-btn:hover { background: #0052CC; transform: translateY(-1px); }
+/* Estado vacío (sin snapshot de compra): ícono neutro y mensaje propio */
+.confirmacion-icono-vacio {
+  background: linear-gradient(135deg, #0052CC, #0066FF);
+  box-shadow: 0 8px 24px #0066FF40;
+}
+.confirmacion-vacio-msg { font-size: 0.95rem; color: #555; line-height: 1.6; margin-bottom: 0.5rem; }
 
 /* ===== ADMIN LOGIN ===== */
 .admin-login {
@@ -840,6 +846,132 @@ ul { list-style: none; }
 
 
 
+/* ===== ENVÍO EN CARDS DEL CATÁLOGO ===== */
+.producto-precio-bloque { display: flex; flex-direction: column; gap: 0.15rem; }
+.producto-envio { font-size: 0.78rem; color: #888; font-weight: 600; }
+
+/* ===== CARRITO — LÍNEA DE ENVÍO ===== */
+.carrito-linea-envio {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 0.5rem; font-size: 0.85rem; color: #666; padding-bottom: 0.6rem;
+}
+.carrito-envio-franja { color: #999; font-size: 0.78rem; }
+.carrito-envio-monto { font-weight: 700; color: #333; }
+.carrito-total { font-weight: 600; }
+
+/* ===== CHECKOUT — ENVÍO Y OPCIONALES ===== */
+.envio-error {
+  font-size: 0.88rem; color: #E24B4A; font-weight: 600;
+  padding: 0.75rem 1rem; background: #FFF5F5;
+  border: 1.5px solid #E24B4A30; border-radius: 10px;
+}
+.envio-cargando { font-size: 0.88rem; color: #888; margin-bottom: 0.5rem; }
+.envio-opcionales { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.75rem; }
+.envio-opcional {
+  display: flex; align-items: center; gap: 0.75rem; cursor: pointer;
+  padding: 0.75rem 1rem; border: 1.5px solid #E0E0DC; border-radius: 10px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.envio-opcional:hover { border-color: #0066FF; }
+.envio-opcional.marcado { border-color: #0066FF; background: #F0F5FF; }
+.envio-opcional input { width: 18px; height: 18px; accent-color: #0066FF; flex-shrink: 0; }
+.envio-opcional-info { display: flex; justify-content: space-between; align-items: baseline; flex: 1; gap: 0.75rem; }
+.envio-opcional-nombre { font-size: 0.88rem; font-weight: 600; color: #333; }
+.envio-opcional-precio { font-size: 0.88rem; font-weight: 700; color: #0066FF; white-space: nowrap; }
+.envio-opcional-check { color: #2D7D46; font-weight: 700; }
+.resumen-linea-menor { font-size: 0.82rem; color: #888; }
+
+/* ===== CONFIRMACIÓN — DESGLOSE Y TRACKING ===== */
+.conf-tracking {
+  background: #F0F5FF; border: 1.5px solid #0066FF30;
+  border-radius: 12px; padding: 1.25rem; text-align: left; margin-bottom: 1.25rem;
+}
+.conf-tracking h3 {
+  font-size: 0.8rem; font-weight: 700; color: #888;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;
+}
+.conf-tracking p { font-size: 0.9rem; color: #555; }
+.conf-tracking a { color: #0066FF; font-weight: 700; }
+.conf-tracking a:hover { text-decoration: underline; }
+.conf-dni { margin-top: 0.5rem; font-size: 0.85rem; color: #888; }
+
+/* ===== ADMIN — CAMPOS DE ENVÍO DEL PRODUCTO ===== */
+.modal-envio {
+  background: #FAFAF9; border: 1.5px solid #EBEBEA;
+  border-radius: 12px; padding: 1rem;
+}
+.modal-envio h3 { font-size: 0.88rem; font-weight: 700; margin-bottom: 0.25rem; }
+.modal-envio-hint { font-size: 0.75rem; color: #888; margin-bottom: 0.75rem; }
+
+/* ===== ADMIN — TARIFAS DE ENVÍO ===== */
+.tarifas-opcionales {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
+  padding: 1.75rem; border-top: 1px solid #EBEBEA; background: #FAFAF9;
+}
+.opcional-card {
+  background: #fff; border: 1.5px solid #EBEBEA; border-radius: 14px;
+  padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;
+}
+.opcional-card h3 { font-size: 0.9rem; font-weight: 700; }
+.opcional-activo {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.85rem; font-weight: 600; color: #444; cursor: pointer;
+  align-self: flex-end;
+}
+.opcional-activo input { width: 18px; height: 18px; accent-color: #0066FF; }
+.opcional-guardar {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+.opcional-hint { font-size: 0.78rem; color: #888; }
+.modal-checks { gap: 1.5rem; align-items: center; }
+.modal-checks .opcional-activo { align-self: flex-start; padding-top: 0.5rem; }
+
+/* ===== ADMIN — DESPACHOS ===== */
+.despachos-lista { display: flex; flex-direction: column; gap: 1.25rem; padding: 1.75rem; }
+.despacho-card {
+  border: 1.5px solid #EBEBEA; border-radius: 16px; padding: 1.5rem;
+  background: #fff; transition: border-color 0.15s;
+}
+.despacho-card:hover { border-color: #0066FF40; }
+.despacho-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;
+}
+.despacho-id { font-size: 1.05rem; font-weight: 800; margin-right: 0.75rem; }
+.despacho-fecha { font-size: 0.78rem; color: #888; }
+.pendiente-badge { background: #FFF3CD; color: #856404; }
+.despacho-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem; margin-bottom: 0.5rem;
+}
+.despacho-bloque {
+  background: #FAFAF9; border: 1px solid #F0F0EE;
+  border-radius: 12px; padding: 0.9rem 1rem;
+}
+.despacho-bloque h4 {
+  font-size: 0.72rem; font-weight: 700; color: #888;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.4rem;
+}
+.despacho-bloque p { font-size: 0.85rem; color: #555; line-height: 1.5; }
+.despacho-items { display: flex; flex-direction: column; gap: 0.15rem; }
+.despacho-items li { font-size: 0.85rem; color: #555; }
+.despacho-peso { margin-top: 0.4rem; font-size: 0.82rem; color: #888; }
+.despacho-margen-positivo { color: #2D7D46; }
+.despacho-margen-negativo { color: #E24B4A; }
+.despacho-mensaje { font-size: 0.82rem; color: #0066FF; font-weight: 600; margin-bottom: 0.75rem; }
+.despacho-acciones {
+  display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap;
+  margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #F0F0EE;
+}
+.despacho-acciones .admin-field { min-width: 170px; }
+.btn-copiar {
+  padding: 0.6rem 1.25rem; background: #F2F2F0; color: #333;
+  border-radius: 30px; font-size: 0.88rem; font-weight: 600; transition: all 0.2s;
+}
+.btn-copiar:hover { background: #E0E0DC; }
+.btn-copiar.copiado { background: #2D7D46; color: #fff; }
+.despacho-andreani { display: inline-flex; align-items: center; }
+
 /* ===== RESPONSIVE MOBILE ===== */
 @media (max-width: 900px) {
   /* HERO */
@@ -894,6 +1026,10 @@ ul { list-style: none; }
   .checkout-layout { grid-template-columns: 1fr; }
   .checkout-resumen { position: static; }
 
+  /* CONFIRMACIÓN */
+  .confirmacion { padding: 2rem 1rem; }
+  .confirmacion-card { padding: 2rem 1.5rem; }
+
   /* CARRITO */
   .carrito-drawer { width: 100%; right: -100%; }
 
@@ -905,6 +1041,19 @@ ul { list-style: none; }
   .admin-main { padding: 1rem; }
   .admin-metricas { flex-direction: column; }
   .metrica-card { min-width: auto; }
+
+  /* TARIFAS DE ENVÍO */
+  .tarifas-opcionales { grid-template-columns: 1fr; padding: 1.25rem; }
+
+  /* DESPACHOS */
+  .despachos-lista { padding: 1.25rem; }
+  .despacho-grid { grid-template-columns: 1fr; }
+  .despacho-acciones { flex-direction: column; align-items: stretch; }
+  .despacho-acciones .admin-field { min-width: auto; }
+  .despacho-acciones .btn-copiado,
+  .despacho-acciones .btn-copiar,
+  .despacho-acciones .btn-primario,
+  .despacho-acciones .btn-secundario { width: 100%; text-align: center; }
 }
 
 @media (max-width: 480px) {
@@ -931,6 +1080,11 @@ ul { list-style: none; }
 
   /* ADMIN */
   .admin-sidebar { display: none; }
+
+  /* CONFIRMACIÓN */
+  .confirmacion-card { padding: 1.75rem 1.1rem; }
+  .confirmacion-card h1 { font-size: 1.35rem; }
+  .volver-inicio-btn { width: 100%; padding: 0.85rem 1rem; }
 
   /* nosotros - contacto */
 @media (max-width: 900px) {

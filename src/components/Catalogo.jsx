@@ -1,11 +1,47 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { colores } from "../datos";
+
+const API = import.meta.env.VITE_API_URL;
 
 const categorias = ["Todas", "Montaña", "Urbana", "Ruta", "Niños", "Gravel"];
 
 export default function Catalogo({ productos, onAgregarAlCarrito }) {
   const [filtro, setFiltro] = useState("Todas");
   const [agregados, setAgregados] = useState({});
+  // Envío cotizado por producto (1 unidad): { [id]: totalARS }.
+  const [envios, setEnvios] = useState({});
+
+  // Cotizamos el envío de cada producto con POST /envios/cotizar y lo
+  // cacheamos por id. Si cambia la lista de productos, volvemos a cotizar.
+  // Si la llamada falla, simplemente no se muestra la línea "Envío $X".
+  useEffect(() => {
+    let cancelado = false;
+    if (productos.length === 0) return;
+
+    const cotizarProducto = async (producto) => {
+      try {
+        const res = await fetch(`${API}/envios/cotizar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: [{ producto_id: producto.id, cantidad: 1 }] }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return [producto.id, data.total];
+      } catch {
+        return null;
+      }
+    };
+
+    Promise.all(productos.map(cotizarProducto)).then((resultados) => {
+      if (cancelado) return;
+      const mapa = {};
+      resultados.filter(Boolean).forEach(([id, total]) => { mapa[id] = total; });
+      setEnvios(mapa);
+    });
+
+    return () => { cancelado = true; };
+  }, [productos]);
 
   const filtrados = filtro === "Todas"
     ? productos
@@ -63,14 +99,19 @@ export default function Catalogo({ productos, onAgregarAlCarrito }) {
                   </svg>
                 )
               }
-              
-              {producto.stock === 0}
             </div>
             <div className="producto-info">
               <h3 className="producto-nombre">{producto.nombre}</h3>
               <p className="producto-desc">{producto.descripcion}</p>
               <div className="producto-footer">
-                <span className="producto-precio">${producto.precio.toLocaleString("es-AR")}</span>
+                <div className="producto-precio-bloque">
+                  <span className="producto-precio">${producto.precio.toLocaleString("es-AR")}</span>
+                  {envios[producto.id] !== undefined && (
+                    <span className="producto-envio">
+                      🚚 Envío ${envios[producto.id].toLocaleString("es-AR")}
+                    </span>
+                  )}
+                </div>
                 <button
                   className={`agregar-btn ${agregados[producto.id] ? "agregado" : ""} ${producto.stock === 0 ? "sin-stock-btn" : ""}`}
                   onClick={() => handleAgregar(producto)}

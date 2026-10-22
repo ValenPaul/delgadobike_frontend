@@ -1,3 +1,4 @@
 - pedido de confirmación (enviar email)
 - probar tarjetas de mercado pago de prueba  OK
 - cuenta de nuria en resend 
+- SEO de la pagina

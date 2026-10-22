@@ -9,6 +9,12 @@ const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
 });
 
+// MercadoPago rechaza `auto_return` cuando back_urls apunta a localhost
+// (error 400 "invalid_auto_return", verificado el 2026-10-22). En dev local
+// no lo enviamos: el comprador vuelve con el botón "Volver al sitio" y el
+// flujo completa igual, porque el pedido lo crea el webhook al aprobarse.
+const esLocal = (process.env.FRONTEND_URL || "").includes("localhost");
+
 // POST /api/pagos/crear-preferencia
 router.post("/crear-preferencia", async (req, res) => {
   const { carrito, form, envio, pedidoId } = req.body;
@@ -52,15 +58,22 @@ router.post("/crear-preferencia", async (req, res) => {
           failure: `${process.env.FRONTEND_URL}/checkout`,
           pending: `${process.env.FRONTEND_URL}/confirmacion`,
         },
-        auto_return: "approved",
+        ...(esLocal ? {} : { auto_return: "approved" }),
         notification_url: `${process.env.BACKEND_URL}/api/pagos/webhook`,
-        statement_descriptor: "VeloStore",
+        statement_descriptor: "DelgadoBike",
       },
     });
 
     res.json({ init_point: result.init_point, pedidoId });
   } catch (err) {
     console.error("Error MercadoPago:", err);
+    // Ayuda de diagnóstico: el SDK devuelve "unauthorized / invalid access token"
+    // cuando MP_ACCESS_TOKEN falta o fue revocado/vencido.
+    if (err && (err.code === "unauthorized" || /invalid access token/i.test(err.message || ""))) {
+      console.error(
+        "MP rechazó las credenciales: revisar que MP_ACCESS_TOKEN en backend/.env sea válido y vigente (se genera en Tu negocio → Credenciales en MercadoPago)."
+      );
+    }
     res.status(500).json({ error: "Error al crear preferencia de pago" });
   }
 });
@@ -86,6 +99,36 @@ router.post("/webhook", async (req, res) => {
     const envioData = JSON.parse(envio);
     const total = carritoData.reduce((a, i) => a + i.precio * i.cantidad, 0) + envioData.costo;
 
+    // DNI del comprador si el formulario lo mandó (opcional)
+    const dniPedido =
+      formData.dni !== undefined && formData.dni !== null && String(formData.dni).trim() !== ""
+        ? String(formData.dni).trim()
+        : null;
+
+    // Desglose del envío cobrado. El checkout nuevo manda
+    // { base, seguro, express, total, etiqueta } desde POST /envios/cotizar.
+    // El flujo viejo manda solo { costo } → guardamos NULL y no rompemos nada.
+    let envioDesglose = null;
+    let envioCobrado = null;
+    const desgloseCompleto =
+      envioData &&
+      Number.isFinite(Number(envioData.base)) &&
+      Number.isFinite(Number(envioData.seguro)) &&
+      Number.isFinite(Number(envioData.express)) &&
+      Number.isFinite(Number(envioData.total)) &&
+      typeof envioData.etiqueta === "string" &&
+      envioData.etiqueta.trim() !== "";
+    if (desgloseCompleto) {
+      envioDesglose = {
+        base: Math.round(Number(envioData.base)),
+        seguro: Math.round(Number(envioData.seguro)),
+        express: Math.round(Number(envioData.express)),
+        total: Math.round(Number(envioData.total)),
+        etiqueta: envioData.etiqueta.trim(),
+      };
+      envioCobrado = envioDesglose.total;
+    }
+
     // Verificar que el pedido no exista ya (evitar duplicados)
     const { rows: existe } = await pool.query(
       "SELECT id FROM pedidos WHERE id = $1",
@@ -108,17 +151,21 @@ router.post("/webhook", async (req, res) => {
         if (rows[0].stock < item.cantidad) throw new Error(`Stock insuficiente para ${item.nombre}`);
       }
 
-      // Insertar pedido
+      // Insertar pedido (dni + desglose de envío solo si el checkout los mandó)
       await client2.query(
         `INSERT INTO pedidos
-          (id, cliente, email, telefono, calle, numero, piso, localidad, provincia, codigo_postal, total, costo_envio, estado, mp_payment_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pendiente',$13)`,
+          (id, cliente, email, telefono, calle, numero, piso, localidad, provincia, codigo_postal,
+           total, costo_envio, estado, mp_payment_id, dni, envio_desglose, envio_cobrado)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pendiente',$13,$14,$15::jsonb,$16)`,
         [
           pedido_id,
           formData.nombre, formData.email, formData.telefono,
           formData.calle, formData.numero, formData.piso,
           formData.localidad, formData.provincia, formData.codigoPostal,
           total, envioData.costo, data.id,
+          dniPedido,
+          envioDesglose ? JSON.stringify(envioDesglose) : null,
+          envioCobrado,
         ]
       );
 
@@ -159,14 +206,28 @@ router.post("/webhook", async (req, res) => {
         [pedido_id]
       );
       if (pedidoCompleto.length > 0) {
-        await Promise.all([
+        // allSettled: si falla un email, el otro igual se envía y el flujo no se rompe
+        const resultados = await Promise.allSettled([
           enviarConfirmacionCliente(pedidoCompleto[0]),
           enviarNotificacionAdmin(pedidoCompleto[0]),
         ]);
+        resultados.forEach((r) => {
+          if (r.status === "rejected") {
+            // El detalle (qué email, destino y motivo) lo aporta email.js
+            console.error(
+              `Error enviando emails del pedido ${pedido_id}:`,
+              (r.reason && r.reason.message) || r.reason
+            );
+          }
+        });
       }
+
+      // No rompemos el flujo si falla la consulta o los emails
     } catch (emailErr) {
-      // No rompemos el flujo si el email falla
-      console.error("Error enviando emails:", emailErr);
+      console.error(
+        `Error enviando emails del pedido ${pedido_id}:`,
+        emailErr.message || emailErr
+      );
     }
 
     res.sendStatus(200);
