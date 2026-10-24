@@ -383,13 +383,23 @@ function SeccionProductos({ productos, onActualizar }) {
 }
 
 // ─── SECCIÓN PEDIDOS ─────────────────────────────────────────────────────────
-const ESTADOS = ["pendiente", "en camino", "entregado", "cancelado"];
+// "reservada" = pago aprobado con retiro en el local (esperando que el
+// cliente lo pase a buscar). El backend la acepta en PUT /pedidos/:id/estado.
+const ESTADOS = ["pendiente", "reservada", "en camino", "entregado", "cancelado"];
 const coloresEstado = {
   pendiente: { bg: "#FFF3CD", color: "#856404" },
+  reservada: { bg: "#E8F0FE", color: "#1A4FA0" },
   "en camino": { bg: "#D1ECF1", color: "#0C5460" },
   entregado: { bg: "#D4EDDA", color: "#155724" },
   cancelado: { bg: "#F8D7DA", color: "#721C24" },
 };
+
+// Un pedido es de retiro en el local si el desglose de envío trae el metodo
+// "retiro_local" (contrato del checkout) o si nació reservado. Sirve para
+// mostrar "Retiro en local" en vez de una dirección que viene NULL.
+const esRetiroLocal = (p) =>
+  (p.envio_desglose && p.envio_desglose.metodo === "retiro_local") ||
+  p.estado === "reservada";
 
 function SeccionPedidos({ pedidos, onActualizarEstado }) {
   const [filtroEstado, setFiltroEstado] = useState("todos");
@@ -401,6 +411,7 @@ function SeccionPedidos({ pedidos, onActualizarEstado }) {
   const totales = {
     todos: pedidos.length,
     pendiente: pedidos.filter(p => p.estado === "pendiente").length,
+    reservada: pedidos.filter(p => p.estado === "reservada").length,
     "en camino": pedidos.filter(p => p.estado === "en camino").length,
     entregado: pedidos.filter(p => p.estado === "entregado").length,
     cancelado: pedidos.filter(p => p.estado === "cancelado").length,
@@ -420,6 +431,7 @@ function SeccionPedidos({ pedidos, onActualizarEstado }) {
         {[
           { key: "todos", label: "Todos", icon: "📦" },
           { key: "pendiente", label: "Pendientes", icon: "⏳" },
+          { key: "reservada", label: "Reservados", icon: "🏬" },
           { key: "en camino", label: "En camino", icon: "🚚" },
           { key: "entregado", label: "Entregados", icon: "✅" },
           { key: "cancelado", label: "Cancelados", icon: "❌" },
@@ -456,7 +468,9 @@ function SeccionPedidos({ pedidos, onActualizarEstado }) {
                 <td>{new Date(p.fecha).toLocaleDateString("es-AR")}</td>
                 <td>
                   <div>{p.cliente}</div>
-                  <div className="tabla-producto-desc">{p.localidad}</div>
+                  <div className="tabla-producto-desc">
+                    {esRetiroLocal(p) ? "Retiro en local" : p.localidad}
+                  </div>
                 </td>
                 <td>
                   {p.items.map((item, i) => (
@@ -465,9 +479,13 @@ function SeccionPedidos({ pedidos, onActualizarEstado }) {
                 </td>
                 <td className="tabla-precio">${p.total.toLocaleString("es-AR")}</td>
                 <td>
-                  <span className="badge-estado" style={{ background: coloresEstado[p.estado].bg, color: coloresEstado[p.estado].color }}>
-                    {p.estado}
-                  </span>
+                  {p.estado === "reservada" ? (
+                    <span className="badge-estado badge-reservada">🏬 Reservada — retira en local</span>
+                  ) : (
+                    <span className="badge-estado" style={{ background: coloresEstado[p.estado]?.bg, color: coloresEstado[p.estado]?.color }}>
+                      {p.estado}
+                    </span>
+                  )}
                 </td>
                 <td>
                   <div className="tabla-acciones">

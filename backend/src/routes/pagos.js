@@ -22,16 +22,26 @@ router.post("/crear-preferencia", async (req, res) => {
   try {
     const preference = new Preference(client);
 
-    const result = await preference.create({
-      body: {
-        items: [
-          ...carrito.map((item) => ({
-            id: String(item.id),
-            title: item.nombre,
-            quantity: Number(item.cantidad),
-            unit_price: Number(item.precio),
-            currency_id: "ARS",
-          })),
+    // Retiro en el local: el checkout manda envio.metodo === "retiro_local"
+    // (costo 0, etiqueta "Retiro en local"). En ese caso NO agregamos la línea
+    // de envío a la preferencia: el cliente solo paga los productos, sin envío
+    // cobrado y sin dirección de entrega. Todo lo demás (metadata, back_urls,
+    // etc.) sigue igual. El webhook, al ver metodo === "retiro_local", crea el
+    // pedido con estado "reservada" en vez de "pendiente".
+    const esRetiroLocal = envio && envio.metodo === "retiro_local";
+
+    const itemsProductos = carrito.map((item) => ({
+      id: String(item.id),
+      title: item.nombre,
+      quantity: Number(item.cantidad),
+      unit_price: Number(item.precio),
+      currency_id: "ARS",
+    }));
+
+    const items = esRetiroLocal
+      ? itemsProductos
+      : [
+          ...itemsProductos,
           {
             id: "envio",
             title: "Envío Andreani",
@@ -39,7 +49,11 @@ router.post("/crear-preferencia", async (req, res) => {
             unit_price: Number(envio.costo),
             currency_id: "ARS",
           },
-        ],
+        ];
+
+    const result = await preference.create({
+      body: {
+        items,
         payer: {
           name: form.nombre,
           email: form.email,
@@ -129,6 +143,14 @@ router.post("/webhook", async (req, res) => {
       envioCobrado = envioDesglose.total;
     }
 
+    // Estado inicial del pedido: si el cliente eligió retiro en el local
+    // (envio.metodo === "retiro_local") el pago aprobado deja el pedido
+    // "reservada" — reservado, esperando que pase a buscarlo al local.
+    // Las preferencias viejas (creadas antes de este cambio) no traen `metodo`
+    // → envioData.metodo es undefined y el pedido sigue naciendo "pendiente".
+    const esRetiroLocal = envioData && envioData.metodo === "retiro_local";
+    const estadoInicial = esRetiroLocal ? "reservada" : "pendiente";
+
     // Verificar que el pedido no exista ya (evitar duplicados)
     const { rows: existe } = await pool.query(
       "SELECT id FROM pedidos WHERE id = $1",
@@ -151,18 +173,20 @@ router.post("/webhook", async (req, res) => {
         if (rows[0].stock < item.cantidad) throw new Error(`Stock insuficiente para ${item.nombre}`);
       }
 
-      // Insertar pedido (dni + desglose de envío solo si el checkout los mandó)
+      // Insertar pedido (dni + desglose de envío solo si el checkout los mandó).
+      // El estado nace según corresponde: 'pendiente' (envío) o 'reservada'
+      // (retiro en el local, pago aprobado esperando retiro).
       await client2.query(
         `INSERT INTO pedidos
           (id, cliente, email, telefono, calle, numero, piso, localidad, provincia, codigo_postal,
            total, costo_envio, estado, mp_payment_id, dni, envio_desglose, envio_cobrado)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pendiente',$13,$14,$15::jsonb,$16)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17)`,
         [
           pedido_id,
           formData.nombre, formData.email, formData.telefono,
           formData.calle, formData.numero, formData.piso,
           formData.localidad, formData.provincia, formData.codigoPostal,
-          total, envioData.costo, data.id,
+          total, envioData.costo, estadoInicial, data.id,
           dniPedido,
           envioDesglose ? JSON.stringify(envioDesglose) : null,
           envioCobrado,

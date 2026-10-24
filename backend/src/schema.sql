@@ -41,8 +41,9 @@ CREATE TABLE IF NOT EXISTS pedidos (
   codigo_postal   VARCHAR(20),
   total           INTEGER NOT NULL,
   costo_envio     INTEGER DEFAULT 0,
-  -- 'pendiente' | 'en camino' | 'entregado' | 'cancelado'
-  -- (pendiente = pago aprobado y listo para despacho; en camino = con tracking)
+  -- 'pendiente' | 'reservada' | 'en camino' | 'entregado' | 'cancelado'
+  -- (pendiente = pago aprobado y listo para despacho; en camino = con tracking;
+  --  reservada = pago aprobado con retiro en el local, esperando que el cliente retire)
   estado          VARCHAR(50) DEFAULT 'pendiente',
   mp_payment_id   VARCHAR(255),
   creado_en       TIMESTAMP DEFAULT NOW(),
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
   -- ===== Kit de despacho / envíos Andreani (migración 2026-10-19) =====
   dni              VARCHAR(20),
   -- Desglose del envío cobrado: {base, seguro, express, total, etiqueta}
+  -- (retiro en el local: todos en 0 y etiqueta "Retiro en local")
   envio_desglose   JSONB,
   envio_cobrado    INTEGER,       -- lo que pagó el cliente por el envío
   envio_costo_real INTEGER,       -- lo que pagamos a Andreani (lo carga el admin)

@@ -5,6 +5,24 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const LOGO_URL = "https://res.cloudinary.com/jgnijxf6/image/upload/v1785875376/logo-sin-fondo-delgadobike_zugg2u.png";
 
+// Dirección del local, mostrada en los emails de pedidos con retiro.
+const DIR_LOCAL = "3 de Febrero 1223, Crespo, Entre Ríos";
+
+// ¿El pedido es de "Retiro en el local"? El checkout lo marca con
+// envio.metodo === "retiro_local", que el webhook traduce a: estado
+// "reservada" + envio_desglose.etiqueta === "Retiro en local" (costo 0).
+// Detectamos por cualquiera de las dos señales para cubrir también pedidos
+// antiguos o edge cases. `envio_desglose` llega como objeto (jsonb de pg).
+function esRetiroLocal(pedido) {
+  if (!pedido) return false;
+  if (pedido.estado === "reservada") return true;
+  const desglose =
+    typeof pedido.envio_desglose === "string"
+      ? (() => { try { return JSON.parse(pedido.envio_desglose); } catch { return null; } })()
+      : pedido.envio_desglose;
+  return !!(desglose && desglose.etiqueta === "Retiro en local");
+}
+
 // La API de Resend NO lanza excepción cuando rechaza un envío: devuelve { data, error }.
 // Sin este chequeo el error quedaba silenciado y el caller no logueaba nada.
 // `contexto` identifica QUÉ email es (cliente/admin/tracking, pedido y destino);
@@ -23,6 +41,7 @@ function revisarEnvio(respuesta, contexto) {
 // ── Email al cliente ────────────────────────────────────────────────────────
 async function enviarConfirmacionCliente(pedido) {
   const { id, cliente, email, items, total, costo_envio, localidad, provincia } = pedido;
+  const retiro = esRetiroLocal(pedido);
 
   const itemsHTML = items.map(item => `
     <tr>
@@ -58,7 +77,9 @@ async function enviarConfirmacionCliente(pedido) {
                 ¡Gracias por tu compra, ${cliente.split(" ")[0]}! 🎉
               </h1>
               <p style="margin:0 0 24px; font-size:15px; color:#555; line-height:1.6;">
-                Recibimos tu pedido y ya estamos preparándolo. Te avisamos cuando esté en camino.
+                ${retiro
+                  ? "Recibimos tu pedido y ya estamos preparándolo para que lo retires en el local."
+                  : "Recibimos tu pedido y ya estamos preparándolo. Te avisamos cuando esté en camino."}
               </p>
 
               <!-- NÚMERO DE PEDIDO -->
@@ -87,7 +108,7 @@ async function enviarConfirmacionCliente(pedido) {
                   <td style="font-size:14px; color:#555; text-align:right;">$${(total - costo_envio).toLocaleString("es-AR")}</td>
                 </tr>
                 <tr>
-                  <td style="font-size:14px; color:#555; padding:6px 0;">Envío Andreani</td>
+                  <td style="font-size:14px; color:#555; padding:6px 0;">${retiro ? "Retiro en el local" : "Envío Andreani"}</td>
                   <td style="font-size:14px; color:#555; text-align:right;">$${costo_envio.toLocaleString("es-AR")}</td>
                 </tr>
                 <tr>
@@ -100,13 +121,21 @@ async function enviarConfirmacionCliente(pedido) {
             <!-- DIRECCIÓN -->
             <tr><td style="background:#fff; padding: 0 40px 40px;">
               <div style="background:#F7F7F5; border-radius:12px; padding:20px;">
+                ${retiro ? `
+                <p style="margin:0 0 8px; font-size:13px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:0.5px;">Retiro en el local</p>
+                <p style="margin:0; font-size:14px; color:#333; line-height:1.6;">
+                  Retiro en el local — ${DIR_LOCAL}
+                </p>
+                <p style="margin:8px 0 0; font-size:13px; color:#888;">
+                  🏍️ Te avisamos cuando esté listo para retirar. Traé tu número de pedido.
+                </p>` : `
                 <p style="margin:0 0 8px; font-size:13px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:0.5px;">Dirección de entrega</p>
                 <p style="margin:0; font-size:14px; color:#333; line-height:1.6;">
                   ${localidad}, ${provincia}
                 </p>
                 <p style="margin:8px 0 0; font-size:13px; color:#888;">
                   🚚 Envío por Andreani — llegará en 3 a 5 días hábiles
-                </p>
+                </p>`}
               </div>
             </td></tr>
 
@@ -139,6 +168,7 @@ async function enviarConfirmacionCliente(pedido) {
 // ── Email al admin ──────────────────────────────────────────────────────────
 async function enviarNotificacionAdmin(pedido) {
   const { id, cliente, email, items, total, localidad, provincia } = pedido;
+  const retiro = esRetiroLocal(pedido);
 
   const itemsTexto = items.map(i => `• ${i.nombre} x${i.cantidad}`).join("<br/>");
 
@@ -177,8 +207,8 @@ async function enviarNotificacionAdmin(pedido) {
                   <p style="margin:0; font-size:14px; color:#333; line-height:1.8;">${itemsTexto}</p>
                 </div>
                 <div style="background:#F7F7F5; border-radius:12px; padding:16px 20px;">
-                  <p style="margin:0 0 4px; font-size:12px; color:#888; font-weight:600; text-transform:uppercase;">Destino</p>
-                  <p style="margin:0; font-size:14px; color:#333;">${localidad}, ${provincia}</p>
+                  <p style="margin:0 0 4px; font-size:12px; color:#888; font-weight:600; text-transform:uppercase;">${retiro ? "Retiro en el local" : "Destino"}</p>
+                  <p style="margin:0; font-size:14px; color:#333;">${retiro ? `Retiro en el local — ${DIR_LOCAL}` : `${localidad}, ${provincia}`}</p>
                 </div>
                 <div style="background:#EEF5FF; border-radius:12px; padding:16px 20px; border:1px solid #0066FF30;">
                   <p style="margin:0 0 4px; font-size:12px; color:#0066FF; font-weight:600; text-transform:uppercase;">Total</p>
@@ -197,7 +227,9 @@ async function enviarNotificacionAdmin(pedido) {
   const respuesta = await resend.emails.send({
     from: process.env.EMAIL_FROM,
     to: process.env.EMAIL_ADMIN,
-    subject: `🛒 Nuevo pedido #${id} — $${total.toLocaleString("es-AR")}`,
+    subject: retiro
+      ? `🛒 Nuevo pedido #${id} — retiro en local ($${total.toLocaleString("es-AR")})`
+      : `🛒 Nuevo pedido #${id} — $${total.toLocaleString("es-AR")}`,
     html,
   });
   return revisarEnvio(respuesta, `de notificación al admin (pedido ${id}, destino: ${process.env.EMAIL_ADMIN})`);

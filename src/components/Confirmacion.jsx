@@ -25,17 +25,25 @@ export default function Confirmacion({ pedido, onVolver }) {
   const tieneDesglose =
     typeof envio.etiqueta === "string" && envio.etiqueta.trim() !== "" &&
     Number.isFinite(Number(envio.total));
+  // Retiro en el local: el desglose trae metodo === "retiro_local" (contrato
+  // del backend) y el pedido nace reservado en vez de ir por Andreani.
+  const esRetiroLocal = envio.metodo === "retiro_local" || pedido.metodo === "retiro_local";
 
   return (
     <div className="confirmacion">
       <div className="confirmacion-card">
         <div className="check-circle">✓</div>
-        <h1>¡Pedido confirmado!</h1>
+        <h1>{esRetiroLocal ? "¡Pedido reservado!" : "¡Pedido confirmado!"}</h1>
         <p className="confirmacion-num">Número de pedido: <strong>{pedido.numeroPedido}</strong></p>
         <p className="confirmacion-msg">
           Te enviamos la confirmación a <strong>{pedido.form.email}</strong>.
-          Tu bicicleta viaja por <strong>Andreani</strong>
-          {tieneDesglose ? <> — {envio.etiqueta}</> : ""}.
+          {esRetiroLocal ? (
+            <>Tu pedido queda reservado en el local hasta que lo pases a buscar.</>
+          ) : (
+            <> Tu bicicleta viaja por <strong>Andreani</strong>
+              {tieneDesglose ? <> — {envio.etiqueta}</> : ""}.
+            </>
+          )}
         </p>
 
         <div className="confirmacion-resumen">
@@ -46,7 +54,12 @@ export default function Confirmacion({ pedido, onVolver }) {
               <span>${(item.precio * item.cantidad).toLocaleString("es-AR")}</span>
             </div>
           ))}
-          {tieneDesglose ? (
+          {esRetiroLocal ? (
+            <div className="conf-item conf-envio">
+              <span>🏬 Retiro en el local</span>
+              <span>Gratis</span>
+            </div>
+          ) : tieneDesglose ? (
             <>
               <div className="conf-item">
                 <span>Envío · {envio.etiqueta}</span>
@@ -97,17 +110,32 @@ export default function Confirmacion({ pedido, onVolver }) {
           </div>
         )}
 
-        <div className="entrega-info">
-          <h3>Dirección de entrega</h3>
-          <p>
-            {pedido.form.calle} {pedido.form.numero}
-            {pedido.form.piso ? `, ${pedido.form.piso}` : ""}<br/>
-            {pedido.form.localidad}, {pedido.form.provincia} ({pedido.form.codigoPostal})
-          </p>
-          {pedido.form.dni && (
-            <p className="conf-dni">DNI: {pedido.form.dni}</p>
-          )}
-        </div>
+        {esRetiroLocal ? (
+          <div className="conf-retiro">
+            <h3>🏬 Retiro en el local</h3>
+            <p>
+              <strong>3 de Febrero 1223, Crespo, Entre Ríos</strong>
+            </p>
+            <p>
+              Te avisamos cuando esté listo para retirar. Traé tu número de pedido.
+            </p>
+            {pedido.form.dni && (
+              <p className="conf-dni">DNI: {pedido.form.dni}</p>
+            )}
+          </div>
+        ) : (
+          <div className="entrega-info">
+            <h3>Dirección de entrega</h3>
+            <p>
+              {pedido.form.calle} {pedido.form.numero}
+              {pedido.form.piso ? `, ${pedido.form.piso}` : ""}<br/>
+              {pedido.form.localidad}, {pedido.form.provincia} ({pedido.form.codigoPostal})
+            </p>
+            {pedido.form.dni && (
+              <p className="conf-dni">DNI: {pedido.form.dni}</p>
+            )}
+          </div>
+        )}
 
         <button className="volver-inicio-btn" onClick={onVolver}>Volver a la tienda</button>
       </div>

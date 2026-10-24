@@ -6,3 +6,4 @@ dist
 *.docx
 opencode.json
 .opencode
+.playwright-mcp

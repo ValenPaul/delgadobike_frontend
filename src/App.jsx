@@ -74,6 +74,9 @@ export default function App() {
         form: snap.form,
         carrito: snap.carrito,
         envio: snap.envio,
+        // "retiro_local" cuando el cliente eligió retirar en el local
+        // (también viene dentro de envio.metodo; acá lo duplicamos explícito)
+        metodo: snap.metodo || (snap.envio && snap.envio.metodo) || "domicilio",
         total: typeof snap.total === "number" ? snap.total : subtotal + (snap.envio.costo || 0),
       });
     } catch (err) {

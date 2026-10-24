@@ -167,7 +167,9 @@ router.put("/:id/envio", requerirAuth, async (req, res) => {
 // PUT /api/pedidos/:id/estado — cambiar estado desde el admin (solo admin)
 router.put("/:id/estado", requerirAuth, async (req, res) => {
   const { estado } = req.body;
-  const estadosValidos = ["pendiente", "en camino", "entregado", "cancelado"];
+  // Estados válidos. "reservada" = pago aprobado con retiro en el local
+  // (sin envío cobrado), esperando que el cliente pase a retirar.
+  const estadosValidos = ["pendiente", "reservada", "en camino", "entregado", "cancelado"];
   if (!estadosValidos.includes(estado)) {
     return res.status(400).json({ error: "Estado inválido" });
   }
