@@ -394,11 +394,17 @@ const coloresEstado = {
   cancelado: { bg: "#F8D7DA", color: "#721C24" },
 };
 
-// Un pedido es de retiro en el local si el desglose de envío trae el metodo
-// "retiro_local" (contrato del checkout) o si nació reservado. Sirve para
-// mostrar "Retiro en local" en vez de una dirección que viene NULL.
+// Un pedido es de retiro en el local si el desglose de envío dice "Retiro en
+// local" (o si nació reservado). Sirve para mostrar "Retiro en local" en vez
+// de una dirección que viene vacía.
+// OJO: se detecta por `etiqueta` y NO por `metodo`: el backend solo persiste
+// { base, seguro, express, total, etiqueta } en el JSONB (ver
+// backend/src/routes/pagos.js → envioDesglose), así que `metodo` nunca llega
+// a la BD y esa condición nunca matchearía. `etiqueta` sí se guarda y es lo
+// que ya usa email.js. La condición de estado queda como red de seguridad
+// para pedidos viejos sin desglose.
 const esRetiroLocal = (p) =>
-  (p.envio_desglose && p.envio_desglose.metodo === "retiro_local") ||
+  (p.envio_desglose && p.envio_desglose.etiqueta === "Retiro en local") ||
   p.estado === "reservada";
 
 function SeccionPedidos({ pedidos, onActualizarEstado }) {
@@ -465,7 +471,9 @@ function SeccionPedidos({ pedidos, onActualizarEstado }) {
             {filtrados.map(p => (
               <tr key={p.id}>
                 <td><strong>{p.id}</strong></td>
-                <td>{new Date(p.fecha).toLocaleDateString("es-AR")}</td>
+                {/* GET /pedidos devuelve las filas crudas de la tabla: la
+                    columna de fecha se llama creado_en, no fecha. */}
+                <td>{new Date(p.creado_en).toLocaleDateString("es-AR")}</td>
                 <td>
                   <div>{p.cliente}</div>
                   <div className="tabla-producto-desc">
