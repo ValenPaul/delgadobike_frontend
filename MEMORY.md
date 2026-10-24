@@ -6,6 +6,7 @@
 > - Actualizar la fecha en "Estado" cada vez que se modifique.
 
 ## Estado (última actualización: 2026-10-24)
+- **2026-10-24 — "Retiro en el local" implementado y desplegado** (backend `64ae311` + frontend `a532dce`): checkout con selector domicilio/retiro (retiro gratis, sin dirección ni opcionales), preferencia MP sin línea de envío, pedido nace **`reservada`** (stock ya descontado), admin con badge 🏬 y estado "reservada", emails muestran la dirección del local (3 de Febrero 1223, Crespo). **Falta la compra real de prueba** (Playera $1 con retiro) para cerrar el E2E.
 - **2026-10-24 — Pendientes 1 y 2 cerrados**: los 8 productos tienen peso/dimensiones reales (15 kg, caja 80×25×140 → lado 65,4 cm) y la franja "Bici en caja" quedó en **$70.000 provisorio** (costo real Andreani Crespo → Libertador SM). Verificado en prod: 8/8 productos y las cards del catálogo cotizan $70.000; mixto cobra un solo envío.
 - **Ronda "Envíos Andreani manuales" completa (DB → backend → frontend) + DEPLOY A PRODUCCIÓN 2026-10-22**: los proyectos de Vercel están **conectados a GitHub** → `git push` a `main` deploya solo (backend `d3f83d8`, frontend `73d54bd`). Verificado por API en prod: campos nuevos en productos, cotizador real, auth 401, botón "Volver a la tienda" en el bundle.
 - Nuevo modelo: **el cliente siempre paga el envío real** — tarifas por franja de peso editables desde el admin, opcionales (seguro $17.800, express $12.500), un solo envío por carrito. Sin API: el admin genera el envío en el portal de Andreani, pega el tracking y despacha desde el panel.
@@ -27,6 +28,7 @@
 - `/confirmacion` con estado vacío + botón **"Volver a la tienda"** (el carrito ya quedaba vacío por la recarga de página). Emails Resend: `Promise.allSettled` en el webhook y chequeo de `error` del SDK (antes fallaban en silencio).
 
 ## Pendientes
+0. **Compra real de prueba del "Retiro en el local"** (Playera $1, opción retiro): verificar `estado = reservada`, stock descontado, ausencia en Despachos, email con dirección del local, y marcar `entregado` al recogerla.
 1. ~~Peso/dimensiones de los 8 productos~~ → **resuelto 2026-10-24**: todos con 15 kg y caja 80×25×140.
 2. ~~Precio de "Bici en caja"~~ → **$70.000 provisorio** (2026-10-24, costo real Andreani Crespo → Libertador SM). Ajustable desde Admin → Tarifas cuando haya cotizaciones de zonas lejanas; el label aún dice "(ajustar precio real)". Franjas 2–20 kg quedan sin uso (reservadas para futuros accesorios/repuestos).
 3. ~~Token MP + `invalid_auto_return`~~ → **resuelto y desplegado 2026-10-22** (token válido; `auto_return` omitido con back_urls localhost; fix ya en prod).
