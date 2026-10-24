@@ -5,7 +5,8 @@
 > - Nunca pegar secretos ni contenido de `.env`.
 > - Actualizar la fecha en "Estado" cada vez que se modifique.
 
-## Estado (última actualización: 2026-10-22)
+## Estado (última actualización: 2026-10-24)
+- **2026-10-24 — Pendientes 1 y 2 cerrados**: los 8 productos tienen peso/dimensiones reales (15 kg, caja 80×25×140 → lado 65,4 cm) y la franja "Bici en caja" quedó en **$70.000 provisorio** (costo real Andreani Crespo → Libertador SM). Verificado en prod: 8/8 productos y las cards del catálogo cotizan $70.000; mixto cobra un solo envío.
 - **Ronda "Envíos Andreani manuales" completa (DB → backend → frontend) + DEPLOY A PRODUCCIÓN 2026-10-22**: los proyectos de Vercel están **conectados a GitHub** → `git push` a `main` deploya solo (backend `d3f83d8`, frontend `73d54bd`). Verificado por API en prod: campos nuevos en productos, cotizador real, auth 401, botón "Volver a la tienda" en el bundle.
 - Nuevo modelo: **el cliente siempre paga el envío real** — tarifas por franja de peso editables desde el admin, opcionales (seguro $17.800, express $12.500), un solo envío por carrito. Sin API: el admin genera el envío en el portal de Andreani, pega el tracking y despacha desde el panel.
 - **E2E real verificado 2026-10-22 (producción)**: compra `VP-61942` → `dni` + `envio_desglose` + `envio_cobrado` correctos, stock descontado, webhook #5 (5/5 OK) y **llegaron los 2 emails** (comprador + vendedor). Env vars del admin seteadas en Vercel y login 200 en prod.
@@ -26,8 +27,8 @@
 - `/confirmacion` con estado vacío + botón **"Volver a la tienda"** (el carrito ya quedaba vacío por la recarga de página). Emails Resend: `Promise.allSettled` en el webhook y chequeo de `error` del SDK (antes fallaban en silencio).
 
 ## Pendientes
-1. **Cargar peso/dimensiones reales de los 8 productos** (hoy 0 → peso de reserva → todos cotizan $56.500).
-2. **Precio real de la franja "Bici en caja"** (placeholder $56.500; se edita desde Admin → Tarifas).
+1. ~~Peso/dimensiones de los 8 productos~~ → **resuelto 2026-10-24**: todos con 15 kg y caja 80×25×140.
+2. ~~Precio de "Bici en caja"~~ → **$70.000 provisorio** (2026-10-24, costo real Andreani Crespo → Libertador SM). Ajustable desde Admin → Tarifas cuando haya cotizaciones de zonas lejanas; el label aún dice "(ajustar precio real)". Franjas 2–20 kg quedan sin uso (reservadas para futuros accesorios/repuestos).
 3. ~~Token MP + `invalid_auto_return`~~ → **resuelto y desplegado 2026-10-22** (token válido; `auto_return` omitido con back_urls localhost; fix ya en prod).
 4. ~~Pago real con el flujo nuevo~~ → **resuelto 2026-10-22**: `VP-61942` desde producción, con `dni`, `envio_desglose` y `envio_cobrado`. (Compra local no crea pedido: MP no entrega webhooks a `localhost` → probar en prod o con túnel.)
 5. **Resend sigue en modo testing** (`GET /domains` → vacío): los 2 mails de la compra de prueba llegaron porque **ambas casillas son tuyas** (el comprador de prueba es el dueño de la cuenta Resend). Para que **clientes reales** reciban: verificar un dominio propio en Resend y cambiar `EMAIL_FROM` (Vercel + local). Bug corregido 10-22: los fallos de email se silenciaban.
