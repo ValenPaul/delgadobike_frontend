@@ -103,6 +103,34 @@ CREATE TABLE IF NOT EXISTS envio_opcionales (
   express_activo    BOOLEAN NOT NULL DEFAULT TRUE
 );
 
+-- ============================================================
+-- Envíos por provincia (migración 2026-10-24)
+-- Política: el precio de venta por provincia = costo de Andreani (dato del
+-- admin, solo visible con auth) + margen global (envio_config.margen_pct),
+-- redondeado hacia arriba en múltiplos de $100:
+--   precio_venta = ceil(costo * (1 + margen_pct/100) / 100) * 100
+-- Sin fila activa para la provincia del cliente → fallback al precio nacional
+-- de tarifas_envio (comportamiento anterior, cero regresión).
+-- ============================================================
+
+-- Costo de Andreani por (franja, provincia). `provincia` se guarda
+-- NORMALIZADA (sin acentos, minúsculas, espacios simples): "Córdoba" y
+-- "CORDOBA" son la misma fila (PK compuesta).
+CREATE TABLE IF NOT EXISTS envio_destinos (
+  franja_id INT REFERENCES tarifas_envio(id) ON DELETE CASCADE,
+  provincia VARCHAR(100) NOT NULL,
+  costo INTEGER NOT NULL CHECK (costo >= 0),
+  activo BOOLEAN NOT NULL DEFAULT TRUE,
+  PRIMARY KEY (franja_id, provincia)
+);
+
+-- Configuración global del cotizador (registro único id = 1).
+-- margen_pct: recargo sobre el costo de Andreani, en porcentaje entero 0..100.
+CREATE TABLE IF NOT EXISTS envio_config (
+  id SMALLINT PRIMARY KEY CHECK (id = 1),
+  margen_pct INT NOT NULL CHECK (margen_pct >= 0 AND margen_pct <= 100)
+);
+
 -- Productos de ejemplo para arrancar
 INSERT INTO productos (nombre, categoria, precio, descripcion, stock) VALUES
   ('Trail Xpert 29',    'Montaña', 185000, 'Suspensión delantera 120mm, frenos hidráulicos Shimano, cuadro aluminio 6061.', 5),
@@ -128,4 +156,8 @@ ON CONFLICT (id) DO NOTHING;
 -- Semilla del registro único de opcionales (id = 1)
 INSERT INTO envio_opcionales (id, seguro_etiqueta, seguro_precio, seguro_activo, express_etiqueta, express_precio, express_activo)
 VALUES (1, 'Seguro por valor declarado', 17800, TRUE, 'Envío express 12hs', 12500, TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+-- Semilla de la configuración del cotizador (margen 15% sobre costo Andreani)
+INSERT INTO envio_config (id, margen_pct) VALUES (1, 15)
 ON CONFLICT (id) DO NOTHING;

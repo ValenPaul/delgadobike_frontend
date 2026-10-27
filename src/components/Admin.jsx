@@ -520,7 +520,36 @@ function SeccionPedidos({ pedidos, onActualizarEstado }) {
 }
 
 // ─── SECCIÓN TARIFAS DE ENVÍO ────────────────────────────────────────────────
+// Lista fija de las 24 provincias argentinas
+const PROVINCIAS_ARGENTINAS = [
+  "Buenos Aires",
+  "Ciudad Autónoma de Buenos Aires",
+  "Catamarca",
+  "Chaco",
+  "Chubut",
+  "Córdoba",
+  "Corrientes",
+  "Entre Ríos",
+  "Formosa",
+  "Jujuy",
+  "La Pampa",
+  "La Rioja",
+  "Mendoza",
+  "Misiones",
+  "Neuquén",
+  "Río Negro",
+  "Salta",
+  "San Juan",
+  "San Luis",
+  "Santa Cruz",
+  "Santa Fe",
+  "Santiago del Estero",
+  "Tierra del Fuego",
+  "Tucumán",
+];
+
 function SeccionTarifas() {
+  const [subTabTarifas, setSubTabTarifas] = useState("franjas");
   const [franjas, setFranjas] = useState([]);
   const [opcionales, setOpcionales] = useState(null);
   const [formOpcionales, setFormOpcionales] = useState(null);
@@ -528,6 +557,14 @@ function SeccionTarifas() {
   const [error, setError] = useState("");
   const [modalFranja, setModalFranja] = useState(undefined); // undefined = cerrado
   const [confirmandoBorrar, setConfirmandoBorrar] = useState(null);
+
+  // Estado para "Por destino"
+  const [destinosData, setDestinosData] = useState({ margen_pct: 0, franjas: [], destinos: [] });
+  const [franjaDestinoSeleccionada, setFranjaDestinoSeleccionada] = useState(null);
+  const [filasDestinos, setFilasDestinos] = useState([]); // { provincia, franja_id, costo, activo, precioConMargen }
+  const [cargandoDestinos, setCargandoDestinos] = useState(false);
+  const [errorDestinos, setErrorDestinos] = useState("");
+  const [guardandoDestinos, setGuardandoDestinos] = useState(false);
 
   const cargar = async () => {
     setCargando(true);
@@ -560,6 +597,102 @@ function SeccionTarifas() {
   };
 
   useEffect(() => { cargar(); }, []);
+
+  // Cargar destinos por franja
+  const cargarDestinos = async () => {
+    setCargandoDestinos(true);
+    setErrorDestinos("");
+    try {
+      const res = await fetch(`${API}/envios/destinos`, { headers: authHeaders() });
+      if (await manejarErrorAuth(res)) return;
+      if (!res.ok) {
+        const dataErr = await res.json().catch(() => ({}));
+        setErrorDestinos(dataErr.error || `Error ${res.status} al cargar destinos`);
+        return;
+      }
+      const data = await res.json();
+      setDestinosData(data);
+      // Seleccionar franja por defecto
+      const franjasDest = data.franjas || [];
+      let franjaId = franjaDestinoSeleccionada;
+      if (!franjaId && franjasDest.length > 0) {
+        // Preferir "Bici en caja" si existe
+        const biciCaja = franjasDest.find(f => f.etiqueta && f.etiqueta.toLowerCase().includes("bici"));
+        franjaId = biciCaja ? biciCaja.id : franjasDest[0].id;
+        setFranjaDestinoSeleccionada(franjaId);
+      }
+      // Construir filas para las 24 provincias
+      construirFilasDestinos(data.destinos || [], franjaId || (franjasDest[0]?.id), data.margen_pct || 0);
+    } catch (err) {
+      console.error("Error cargando destinos:", err);
+      setErrorDestinos("No se pudieron cargar los destinos por franja.");
+    } finally {
+      setCargandoDestinos(false);
+    }
+  };
+
+  const construirFilasDestinos = (destinosLista, franjaId, margenPct) => {
+    const filas = PROVINCIAS_ARGENTINAS.map((provincia) => {
+      const existente = destinosLista.find(d => d.provincia === provincia && d.franja_id === franjaId);
+      const costo = existente ? Number(existente.costo || 0) : 0;
+      const activo = existente ? Boolean(existente.activo) : false;
+      const costoNum = Number(costo) || 0;
+      const precioConMargen = costoNum > 0
+        ? Math.ceil(costoNum * (1 + Number(margenPct || 0) / 100) / 100) * 100
+        : 0;
+      return {
+        provincia,
+        franja_id: franjaId,
+        costo: costoNum,
+        activo: Boolean(activo),
+        precioConMargen,
+      };
+    });
+    setFilasDestinos(filas);
+  };
+
+  // Recalcular precios con margen cuando cambia margen o franja
+  useEffect(() => {
+    if (subTabTarifas !== "destinos") return;
+    if (!destinosData.destinos) return;
+    if (franjaDestinoSeleccionada) {
+      construirFilasDestinos(destinosData.destinos, franjaDestinoSeleccionada, destinosData.margen_pct || 0);
+    }
+  }, [franjaDestinoSeleccionada, destinosData.margen_pct, subTabTarifas]);
+
+  const guardarDestinos = async () => {
+    setGuardandoDestinos(true);
+    setErrorDestinos("");
+    try {
+      const destinosBody = filasDestinos.map(f => ({
+        franja_id: Number(f.franja_id),
+        provincia: f.provincia,
+        costo: Math.max(0, Number(f.costo) || 0),
+        activo: Boolean(f.activo),
+      }));
+      const res = await fetch(`${API}/envios/destinos`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          margen_pct: Math.max(0, Math.min(100, Number(destinosData.margen_pct) || 0)),
+          destinos: destinosBody,
+        }),
+      });
+      if (await manejarErrorAuth(res)) return;
+      if (!res.ok) {
+        const dataErr = await res.json().catch(() => ({}));
+        setErrorDestinos(dataErr.error || `Error ${res.status} al guardar destinos`);
+        return;
+      }
+      alert("Precios por destino guardados correctamente.");
+      await cargarDestinos();
+    } catch (err) {
+      console.error("Error guardando destinos:", err);
+      setErrorDestinos("No se pudieron guardar los destinos.");
+    } finally {
+      setGuardandoDestinos(false);
+    }
+  };
 
   const guardarFranja = async (datos, id) => {
     // El backend inserta `orden` explícito y la columna es NOT NULL: si el
@@ -661,135 +794,271 @@ function SeccionTarifas() {
       <div className="admin-seccion-header">
         <div>
           <h2>Tarifas de envío</h2>
-          <p>Franjas de peso de Andreani y opcionales (seguro / express)</p>
+          <p>Franjas de peso de Andreani, opcionales y precios por destino</p>
         </div>
-        <button className="btn-primario" onClick={() => setModalFranja({})}>
-          + Agregar franja
+        {subTabTarifas === "franjas" && (
+          <button className="btn-primario" onClick={() => setModalFranja({})}>
+            + Agregar franja
+          </button>
+        )}
+      </div>
+
+      <div className="admin-subtabs">
+        <button
+          className={`admin-subtab ${subTabTarifas === "franjas" ? "activo" : ""}`}
+          onClick={() => setSubTabTarifas("franjas")}
+        >
+          Franjas y opcionales
+        </button>
+        <button
+          className={`admin-subtab ${subTabTarifas === "destinos" ? "activo" : ""}`}
+          onClick={() => {
+            setSubTabTarifas("destinos");
+            if ((destinosData.franjas || []).length === 0 && !cargandoDestinos) {
+              cargarDestinos();
+            }
+          }}
+        >
+          Por destino
         </button>
       </div>
 
-      {cargando && <div className="tabla-vacia">Cargando tarifas...</div>}
-      {error && <div className="tabla-vacia admin-error">{error}</div>}
-
-      {!cargando && !error && (
+      {subTabTarifas === "franjas" && (
         <>
-          <div className="admin-tabla-wrapper">
-            <table className="admin-tabla">
-              <thead>
-                <tr>
-                  <th>Franja</th>
-                  <th>Rango de peso</th>
-                  <th>Precio</th>
-                  <th>Caja grande</th>
-                  <th>Activa</th>
-                  <th>Orden</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {franjas.map((f) => (
-                  <tr key={f.id}>
-                    <td><div className="tabla-producto-nombre">{f.etiqueta}</div></td>
-                    <td>{formatoKg(f.peso_min_g)} – {formatoKg(f.peso_max_g)}</td>
-                    <td className="tabla-precio">${Number(f.precio).toLocaleString("es-AR")}</td>
-                    <td>{f.requiere_caja_grande ? "Sí" : "No"}</td>
-                    <td>
-                      {f.activa
-                        ? <span className="badge-estado disponible">Activa</span>
-                        : <span className="badge-estado sin-stock">Inactiva</span>
-                      }
-                    </td>
-                    <td>{f.orden}</td>
-                    <td>
-                      <div className="tabla-acciones">
-                        <button className="btn-editar" onClick={() => setModalFranja({ ...f })}>
-                          ✏️ Editar
-                        </button>
-                        <button className="btn-eliminar" onClick={() => setConfirmandoBorrar(f.id)}>
-                          🗑️
-                        </button>
+          {cargando && <div className="tabla-vacia">Cargando tarifas...</div>}
+          {error && <div className="tabla-vacia admin-error">{error}</div>}
+
+          {!cargando && !error && (
+            <>
+              <div className="admin-tabla-wrapper">
+                <table className="admin-tabla">
+                  <thead>
+                    <tr>
+                      <th>Franja</th>
+                      <th>Rango de peso</th>
+                      <th>Precio</th>
+                      <th>Caja grande</th>
+                      <th>Activa</th>
+                      <th>Orden</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {franjas.map((f) => (
+                      <tr key={f.id}>
+                        <td><div className="tabla-producto-nombre">{f.etiqueta}</div></td>
+                        <td>{formatoKg(f.peso_min_g)} – {formatoKg(f.peso_max_g)}</td>
+                        <td className="tabla-precio">${Number(f.precio).toLocaleString("es-AR")}</td>
+                        <td>{f.requiere_caja_grande ? "Sí" : "No"}</td>
+                        <td>
+                          {f.activa
+                            ? <span className="badge-estado disponible">Activa</span>
+                            : <span className="badge-estado sin-stock">Inactiva</span>
+                          }
+                        </td>
+                        <td>{f.orden}</td>
+                        <td>
+                          <div className="tabla-acciones">
+                            <button className="btn-editar" onClick={() => setModalFranja({ ...f })}>
+                              ✏️ Editar
+                            </button>
+                            <button className="btn-eliminar" onClick={() => setConfirmandoBorrar(f.id)}>
+                              🗑️
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Opcionales: registro único (seguro y express) */}
+              {formOpcionales && (
+                <div className="tarifas-opcionales">
+                  <div className="opcional-card">
+                    <h3>🛡️ Seguro por valor declarado</h3>
+                    <div className="admin-field">
+                      <label>Etiqueta</label>
+                      <input
+                        value={formOpcionales.seguro_etiqueta}
+                        onChange={(e) => setOpcional("seguro_etiqueta", e.target.value)}
+                      />
+                    </div>
+                    <div className="modal-row">
+                      <div className="admin-field">
+                        <label>Precio (ARS)</label>
+                        <input
+                          type="number" min="0"
+                          value={formOpcionales.seguro_precio}
+                          onChange={(e) => setOpcional("seguro_precio", e.target.value)}
+                        />
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Opcionales: registro único (seguro y express) */}
-          {formOpcionales && (
-            <div className="tarifas-opcionales">
-              <div className="opcional-card">
-                <h3>🛡️ Seguro por valor declarado</h3>
-                <div className="admin-field">
-                  <label>Etiqueta</label>
-                  <input
-                    value={formOpcionales.seguro_etiqueta}
-                    onChange={(e) => setOpcional("seguro_etiqueta", e.target.value)}
-                  />
-                </div>
-                <div className="modal-row">
-                  <div className="admin-field">
-                    <label>Precio (ARS)</label>
-                    <input
-                      type="number" min="0"
-                      value={formOpcionales.seguro_precio}
-                      onChange={(e) => setOpcional("seguro_precio", e.target.value)}
-                    />
+                      <label className="opcional-activo">
+                        <input
+                          type="checkbox"
+                          checked={formOpcionales.seguro_activo}
+                          onChange={(e) => setOpcional("seguro_activo", e.target.checked)}
+                        />
+                        Activo
+                      </label>
+                    </div>
                   </div>
-                  <label className="opcional-activo">
-                    <input
-                      type="checkbox"
-                      checked={formOpcionales.seguro_activo}
-                      onChange={(e) => setOpcional("seguro_activo", e.target.checked)}
-                    />
-                    Activo
-                  </label>
-                </div>
-              </div>
 
-              <div className="opcional-card">
-                <h3>⚡ Envío express</h3>
-                <div className="admin-field">
-                  <label>Etiqueta</label>
-                  <input
-                    value={formOpcionales.express_etiqueta}
-                    onChange={(e) => setOpcional("express_etiqueta", e.target.value)}
-                  />
-                </div>
-                <div className="modal-row">
-                  <div className="admin-field">
-                    <label>Precio (ARS)</label>
-                    <input
-                      type="number" min="0"
-                      value={formOpcionales.express_precio}
-                      onChange={(e) => setOpcional("express_precio", e.target.value)}
-                    />
+                  <div className="opcional-card">
+                    <h3>⚡ Envío express</h3>
+                    <div className="admin-field">
+                      <label>Etiqueta</label>
+                      <input
+                        value={formOpcionales.express_etiqueta}
+                        onChange={(e) => setOpcional("express_etiqueta", e.target.value)}
+                      />
+                    </div>
+                    <div className="modal-row">
+                      <div className="admin-field">
+                        <label>Precio (ARS)</label>
+                        <input
+                          type="number" min="0"
+                          value={formOpcionales.express_precio}
+                          onChange={(e) => setOpcional("express_precio", e.target.value)}
+                        />
+                      </div>
+                      <label className="opcional-activo">
+                        <input
+                          type="checkbox"
+                          checked={formOpcionales.express_activo}
+                          onChange={(e) => setOpcional("express_activo", e.target.checked)}
+                        />
+                        Activo
+                      </label>
+                    </div>
                   </div>
-                  <label className="opcional-activo">
-                    <input
-                      type="checkbox"
-                      checked={formOpcionales.express_activo}
-                      onChange={(e) => setOpcional("express_activo", e.target.checked)}
-                    />
-                    Activo
-                  </label>
-                </div>
-              </div>
 
-              <div className="opcional-guardar">
-                <button className="btn-primario" onClick={guardarOpcionales}>
-                  Guardar opcionales
-                </button>
-                {opcionales && (
-                  <p className="opcional-hint">
-                    Si desactivás un opcional, el checkout deja de mostrarlo como checkbox.
-                  </p>
-                )}
-              </div>
-            </div>
+                  <div className="opcional-guardar">
+                    <button className="btn-primario" onClick={guardarOpcionales}>
+                      Guardar opcionales
+                    </button>
+                    {opcionales && (
+                      <p className="opcional-hint">
+                        Si desactivás un opcional, el checkout deja de mostrarlo como checkbox.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </>
+      )}
+
+      {subTabTarifas === "destinos" && (
+        <div className="tarifas-destinos">
+          <div className="destinos-header">
+            <div className="destinos-controls">
+              <div className="admin-field">
+                <label>Margen global (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={destinosData.margen_pct ?? 0}
+                  onChange={(e) => setDestinosData(prev => ({ ...prev, margen_pct: e.target.value }))}
+                />
+              </div>
+              <div className="admin-field">
+                <label>Franja</label>
+                <select
+                  value={franjaDestinoSeleccionada || ""}
+                  onChange={(e) => setFranjaDestinoSeleccionada(Number(e.target.value))}
+                >
+                  {(destinosData.franjas || []).map((f) => (
+                    <option key={f.id} value={f.id}>{f.etiqueta}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="destinos-actions">
+              <button
+                className="btn-secundario"
+                onClick={cargarDestinos}
+                disabled={cargandoDestinos || guardandoDestinos}
+              >
+                {cargandoDestinos ? "Cargando..." : "Recargar"}
+              </button>
+              <button
+                className="btn-primario"
+                onClick={guardarDestinos}
+                disabled={guardandoDestinos || cargandoDestinos}
+              >
+                {guardandoDestinos ? "Guardando..." : "Guardar precios por destino"}
+              </button>
+            </div>
+          </div>
+
+          {errorDestinos && <div className="tabla-vacia admin-error">{errorDestinos}</div>}
+          {cargandoDestinos && <div className="tabla-vacia">Cargando destinos...</div>}
+
+          {!cargandoDestinos && !errorDestinos && (
+            <div className="admin-tabla-wrapper">
+              <table className="admin-tabla">
+                <thead>
+                  <tr>
+                    <th>Provincia</th>
+                    <th>Costo Andreani ($)</th>
+                    <th>Precio con margen ($)</th>
+                    <th>Activo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filasDestinos.map((fila, idx) => (
+                    <tr key={fila.provincia}>
+                      <td><div className="tabla-producto-nombre">{fila.provincia}</div></td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          className="destino-input"
+                          value={fila.costo}
+                          onChange={(e) => {
+                            const nuevoCosto = e.target.value === "" ? "" : Number(e.target.value);
+                            setFilasDestinos(prev => {
+                              const copia = [...prev];
+                              const costoNum = Number(nuevoCosto) || 0;
+                              const margenPct = Number(destinosData.margen_pct) || 0;
+                              const precioConMargen = costoNum > 0
+                                ? Math.ceil(costoNum * (1 + margenPct / 100) / 100) * 100
+                                : 0;
+                              copia[idx] = { ...copia[idx], costo: nuevoCosto === "" ? "" : costoNum, precioConMargen };
+                              return copia;
+                            });
+                          }}
+                        />
+                      </td>
+                      <td className="tabla-precio">${Number(fila.precioConMargen || 0).toLocaleString("es-AR")}</td>
+                      <td>
+                        <label className="opcional-activo">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(fila.activo)}
+                            onChange={(e) => {
+                              setFilasDestinos(prev => {
+                                const copia = [...prev];
+                                copia[idx] = { ...copia[idx], activo: e.target.checked };
+                                return copia;
+                              });
+                            }}
+                          />
+                          Activo
+                        </label>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
       {modalFranja !== undefined && (

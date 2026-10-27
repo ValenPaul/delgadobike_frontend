@@ -106,11 +106,9 @@ export default function Catalogo({ productos, onAgregarAlCarrito }) {
               <div className="producto-footer">
                 <div className="producto-precio-bloque">
                   <span className="producto-precio">${producto.precio.toLocaleString("es-AR")}</span>
-                  {envios[producto.id] !== undefined && (
-                    <span className="producto-envio">
-                      🚚 Envío ${envios[producto.id].toLocaleString("es-AR")}
-                    </span>
-                  )}
+                  <span className="producto-envio">
+                    🚚 Envío a calcular con tu ubicación
+                  </span>
                 </div>
                 <button
                   className={`agregar-btn ${agregados[producto.id] ? "agregado" : ""} ${producto.stock === 0 ? "sin-stock-btn" : ""}`}

@@ -489,6 +489,116 @@ ul { list-style: none; }
 }
 .admin-nav-item:hover { background: #1a1a1a; color: #fff; }
 .admin-nav-item.activo { background: #0066FF; color: #fff; }
+
+/* ─── SUBTABS TARIFAS ──────────────────────────────────────────────────────── */
+.admin-subtabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.admin-subtab {
+  background: #151515;
+  border: 1px solid #2a2a2a;
+  color: #b0b0b0;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.admin-subtab:hover {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.admin-subtab.activo {
+  background: rgba(0, 102, 255, 0.15);
+  color: #fff;
+  border-color: #0066FF;
+}
+
+/* ─── TARIFAS POR DESTINO ──────────────────────────────────────────────────── */
+.tarifas-destinos {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.destinos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #151515;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.destinos-controls {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.destinos-controls .admin-field {
+  min-width: 160px;
+  margin: 0;
+}
+
+.destinos-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.destino-input {
+  width: 140px;
+  padding: 8px 10px;
+  background: #0f0f0f;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.destino-input:focus {
+  outline: none;
+  border-color: #0066FF;
+}
+
+@media (max-width: 900px) {
+  .destinos-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .destinos-controls {
+    width: 100%;
+  }
+  .destinos-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .destinos-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .destinos-controls .admin-field {
+    width: 100%;
+    min-width: 0;
+  }
+  .destino-input {
+    width: 100%;
+  }
+}
 .nav-badge {
   margin-left: auto; background: #fff; color: #0066FF;
   font-size: 0.7rem; font-weight: 700;

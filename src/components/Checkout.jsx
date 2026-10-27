@@ -6,8 +6,39 @@ const API = import.meta.env.VITE_API_URL;
 // confirmación cuando el cliente elige retirar su pedido).
 const LOCAL_DIRECCION = "3 de Febrero 1223, Crespo, Entre Ríos";
 
+// Las 24 provincias argentinas con su nombre canónico (con acentos).
+// La normalización de "Ciudad Autónoma de Buenos Aires" / "CABA" la hace
+// el backend, así que acá mandamos el valor tal cual se muestra.
+const PROVINCIAS = [
+  "Buenos Aires",
+  "Ciudad Autónoma de Buenos Aires",
+  "Catamarca",
+  "Chaco",
+  "Chubut",
+  "Córdoba",
+  "Corrientes",
+  "Entre Ríos",
+  "Formosa",
+  "Jujuy",
+  "La Pampa",
+  "La Rioja",
+  "Mendoza",
+  "Misiones",
+  "Neuquén",
+  "Río Negro",
+  "Salta",
+  "San Juan",
+  "San Luis",
+  "Santa Cruz",
+  "Santa Fe",
+  "Santiago del Estero",
+  "Tierra del Fuego",
+  "Tucumán",
+];
+
 // El envío se cotiza SIEMPRE contra el backend (POST /envios/cotizar),
-// que aplica las franjas de tarifas_envio + los opcionales elegidos.
+// que aplica las franjas de tarifas_envio + los opcionales elegidos
+// y el precio de destino por provincia (con fallback al nacional).
 // No hay ninguna simulación ni costo hardcodeado en el cliente.
 export default function Checkout({ carrito, onVolver }) {
   const subtotal = carrito.reduce((a, i) => a + i.precio * i.cantidad, 0);
@@ -34,11 +65,14 @@ export default function Checkout({ carrito, onVolver }) {
     if (errores[name]) setErrores((prev) => ({ ...prev, [name]: "" }));
   };
 
-  // Cotizamos al montar y cada vez que cambian los opcionales elegidos.
+  // Cotizamos al montar y cada vez que cambian los opcionales elegidos,
+  // el carrito o la provincia de entrega (el precio depende del destino).
   // La API devuelve etiqueta, base, seguro, express y total (nada hardcodeado).
   // Con "Retiro en el local" no hay nada que cotizar: cortamos el efecto y
   // la última cotización de domicilio queda disponible por si el cliente
-  // vuelve a elegir ese método.
+  // vuelve a elegir ese método. Sin provincia elegida tampoco cotizamos:
+  // esperamos la dirección completa para no mostrar un precio que puede
+  // estar mal para el destino.
   useEffect(() => {
     if (carrito.length === 0) {
       setEnvio(null);
@@ -49,8 +83,17 @@ export default function Checkout({ carrito, onVolver }) {
       setCotizando(false);
       return;
     }
+    if (!form.provincia || !form.provincia.trim()) {
+      // Sin provincia no hay destino: mostramos "Completá tu dirección..."
+      // y evitamos una llamada a /envios/cotizar incompleta.
+      setEnvio(null);
+      setCotizando(false);
+      setErrorEnvio("");
+      return;
+    }
 
     let cancelado = false;
+    setEnvio(null); // la cotización anterior ya no sirve (otro destino)
     setCotizando(true);
     (async () => {
       try {
@@ -61,6 +104,7 @@ export default function Checkout({ carrito, onVolver }) {
             items: carrito.map((i) => ({ producto_id: i.id, cantidad: i.cantidad })),
             seguro: conSeguro,
             express: conExpress,
+            provincia: form.provincia,
           }),
         });
         if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -83,7 +127,7 @@ export default function Checkout({ carrito, onVolver }) {
     })();
 
     return () => { cancelado = true; };
-  }, [carrito, conSeguro, conExpress, metodoEnvio]);
+  }, [carrito, conSeguro, conExpress, metodoEnvio, form.provincia]);
 
   const validar = () => {
     // Con retiro en el local no hay entrega a domicilio: solo pedimos los
@@ -271,7 +315,15 @@ export default function Checkout({ carrito, onVolver }) {
                 </div>
                 <div className="form-row">
                   <Field label="Localidad" name="localidad" value={form.localidad} onChange={handleChange} error={errores.localidad} />
-                  <Field label="Provincia" name="provincia" value={form.provincia} onChange={handleChange} error={errores.provincia} />
+                  <SelectField
+                    label="Provincia *"
+                    name="provincia"
+                    value={form.provincia}
+                    onChange={handleChange}
+                    error={errores.provincia}
+                    opciones={PROVINCIAS}
+                    placeholder="Elegí tu provincia"
+                  />
                 </div>
                 <div className="form-row">
                   <Field label="Código postal" name="codigoPostal" value={form.codigoPostal} onChange={handleChange}
@@ -283,8 +335,13 @@ export default function Checkout({ carrito, onVolver }) {
             {!esRetiroLocal && (
               <section className="form-section">
                 <h2>Envío Andreani</h2>
+                {(!form.provincia || !form.provincia.trim()) && (
+                  <p className="envio-cargando">Completá tu dirección para calcular el envío</p>
+                )}
                 {errorEnvio && <p className="envio-error">{errorEnvio}</p>}
-                {cotizando && <p className="envio-cargando">Cotizando envío...</p>}
+                {cotizando && form.provincia && form.provincia.trim() && (
+                  <p className="envio-cargando">Cotizando envío...</p>
+                )}
 
                 {envio && (
                   <div className="envio-resultado">

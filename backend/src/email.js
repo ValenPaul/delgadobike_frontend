@@ -127,7 +127,7 @@ async function enviarConfirmacionCliente(pedido) {
                   Retiro en el local — ${DIR_LOCAL}
                 </p>
                 <p style="margin:8px 0 0; font-size:13px; color:#888;">
-                  🏍️ Te avisamos cuando esté listo para retirar. Traé tu número de pedido.
+                  🏍️ Estamos preparando tu compra. Traé tu número de pedido.
                 </p>` : `
                 <p style="margin:0 0 8px; font-size:13px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:0.5px;">Dirección de entrega</p>
                 <p style="margin:0; font-size:14px; color:#333; line-height:1.6;">

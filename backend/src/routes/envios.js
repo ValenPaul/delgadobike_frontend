@@ -4,13 +4,23 @@ const pool = require("../db");
 const { requerirAuth } = require("../auth");
 
 // ============================================================
-// Envíos Andreani — cotización + CRUD de tarifas.
+// Envíos Andreani — cotización + CRUD de tarifas y destinos por provincia.
 //
 // Política de negocio (definitiva): el cliente SIEMPRE paga el envío real.
-// Sin envío gratis, sin mínimos, sin reglas por provincia. El costo sale de
-// las franjas de `tarifas_envio` (según peso/volumen del carrito) más los
-// opcionales (seguro / express) de `envio_opcionales` que el cliente elija
-// pagar.
+// Sin envío gratis, sin mínimos. El costo base sale de las franjas de
+// `tarifas_envio` (según peso/volumen del carrito) más los opcionales
+// (seguro / express) de `envio_opcionales` que el cliente elija pagar.
+//
+// Desde la migración 2026-10-24 la cotización puede ser POR PROVINCIA:
+// - `envio_destinos` guarda, por franja y provincia, el costo que nos cobra
+//   Andreani (dato del admin, solo visible con auth).
+// - El precio de venta se calcula con el margen global de
+//   `envio_config.margen_pct`: ceil(costo * (1 + margen/100) / 100) * 100
+//   (redondeo hacia arriba en múltiplos de $100).
+// - Sin fila activa para la provincia del cliente → fallback al precio
+//   nacional de `tarifas_envio` (comportamiento anterior, cero regresión).
+// - La columna `provincia` se guarda NORMALIZADA (sin acentos, minúsculas,
+//   espacios simples): "Córdoba", "CÓRDOBA" y "  cordoba " son la misma fila.
 //
 // Andreani NO se usa por API en este flujo: los envíos se despachan a mano
 // (kit de despacho del admin). Este archivo solo cotiza contra la tabla
@@ -28,11 +38,32 @@ const PESO_RESERVA_G = 15000;
 const LADO_EQUIVALENTE_CAJA_GRANDE = 60;
 
 // ------------------------------------------------------------
+// Normaliza una provincia para poder compararla de forma robusta:
+// quita los acentos (NFD + colgar los diacríticos), pasá a minúsculas,
+// colapsa los espacios de más y recorta los extremos.
+// Así "Córdoba", "CORDOBA" y "  cordoba " matchean la misma fila de
+// `envio_destinos`, sin depender de cómo la tipeó el cliente o el admin.
+// Sin dependencias externas.
+// ------------------------------------------------------------
+function normalizarProvincia(texto) {
+  return String(texto)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+// ------------------------------------------------------------
 // POST /api/envios/cotizar — PÚBLICA (la llama el checkout antes de pagar)
-// Body: { items: [{ producto_id, cantidad }], seguro?: bool, express?: bool }
+// Body: { items: [{ producto_id, cantidad }], seguro?: bool, express?: bool,
+//         provincia?: string }
+// `provincia` es opcional: si viene, se intenta usar el precio por provincia
+// de `envio_destinos` (costo Andreani + margen global); si no hay fila activa
+// se cae al precio nacional de la franja (igual que antes).
 // ------------------------------------------------------------
 router.post("/cotizar", async (req, res) => {
-  const { items, seguro, express } = req.body || {};
+  const { items, seguro, express, provincia } = req.body || {};
 
   // Validación básica: se necesita al menos un item para cotizar
   if (!Array.isArray(items) || items.length === 0) {
@@ -126,7 +157,35 @@ router.post("/cotizar", async (req, res) => {
     const seguroAplicado = Boolean(seguro) && seguroActivo;
     const expressAplicado = Boolean(express) && expressActivo;
 
-    const base = Number(franja.precio);
+    // ----- Precio por provincia (migración 2026-10-24) -----
+    // Si el cliente mandó provincia, buscamos el costo de Andreani para esa
+    // (franja, provincia) en `envio_destinos`. Si hay fila ACTIVA, el precio
+    // de venta = ceil(costo * (1 + margen/100) / 100) * 100 (redondeo hacia
+    // arriba en múltiplos de $100). Si no hay fila o está inactiva → fallback
+    // al precio nacional de la franja (comportamiento viejo, cero regresión).
+    let base = Number(franja.precio);
+    let destinoPrecioProvincia = false;
+    let provinciaNormalizada = null;
+
+    if (typeof provincia === "string" && provincia.trim() !== "") {
+      provinciaNormalizada = normalizarProvincia(provincia);
+
+      const { rows: destinos } = await pool.query(
+        "SELECT costo, activo FROM envio_destinos WHERE franja_id = $1 AND provincia = $2",
+        [franja.id, provinciaNormalizada]
+      );
+      const destino = destinos[0];
+
+      if (destino && destino.activo && Number(destino.costo) >= 0) {
+        const { rows: configRows } = await pool.query(
+          "SELECT margen_pct FROM envio_config WHERE id = 1"
+        );
+        const margenPct = configRows[0] ? Number(configRows[0].margen_pct) : 0;
+        base = Math.ceil((Number(destino.costo) * (1 + margenPct / 100)) / 100) * 100;
+        destinoPrecioProvincia = true;
+      }
+    }
+
     const precioSeguro = op ? Number(op.seguro_precio) : 0;
     const precioExpress = op ? Number(op.express_precio) : 0;
     const total =
@@ -149,6 +208,12 @@ router.post("/cotizar", async (req, res) => {
         aplicado: expressAplicado,
       },
       total,
+      // Info extra (no rompe a consumidores viejos): qué provincia se usó y
+      // si el precio salió de `envio_destinos` (true) o del nacional (false).
+      destino: {
+        provincia: provinciaNormalizada,
+        precio_destino: destinoPrecioProvincia,
+      },
     });
   } catch (err) {
     console.error("Error cotizando envío:", err);
@@ -354,6 +419,179 @@ router.put("/opcionales", requerirAuth, async (req, res) => {
   } catch (err) {
     console.error("Error actualizando opcionales:", err);
     res.status(500).json({ error: "Error al actualizar los opcionales de envío" });
+  }
+});
+
+// ------------------------------------------------------------
+// GET /api/envios/destinos — estado para el panel (solo admin).
+// NUNCA público: los costos de Andreani no deben salir sin token.
+// Devuelve el margen global, las franjas (para que el admin sepa a cuáles
+// les puede cargar destinos) y los destinos cargados.
+// `provincia` viene normalizada (sin acentos, minúsculas); el frontend la
+// muestra con capitalización propia o armado el nombre que quiera.
+// ------------------------------------------------------------
+router.get("/destinos", requerirAuth, async (req, res) => {
+  try {
+    const { rows: configRows } = await pool.query(
+      "SELECT margen_pct FROM envio_config WHERE id = 1"
+    );
+    const { rows: franjas } = await pool.query(
+      "SELECT id, etiqueta, requiere_caja_grande, activa FROM tarifas_envio ORDER BY orden ASC, id ASC"
+    );
+    const { rows: destinos } = await pool.query(
+      "SELECT franja_id, provincia, costo, activo FROM envio_destinos ORDER BY franja_id ASC, provincia ASC"
+    );
+
+    res.json({
+      margen_pct: configRows[0] ? Number(configRows[0].margen_pct) : 0,
+      franjas,
+      destinos,
+    });
+  } catch (err) {
+    console.error("Error obteniendo destinos de envío:", err);
+    res.status(500).json({ error: "Error al obtener los destinos de envío" });
+  }
+});
+
+// ------------------------------------------------------------
+// PUT /api/envios/destinos — guardar destinos y/o margen (solo admin).
+// Body: {
+//   margen_pct?: number,            // entero 0..100 (opcional: si no viene, no se toca)
+//   destinos: [                     // upsert por fila; las filas que no
+//     {                             // vienen en la lista NO se borran
+//       franja_id: number,          // debe existir en tarifas_envio
+//       provincia: string,          // se guarda normalizada (sin acentos, minúsculas)
+//       costo: number | null,       // entero >= 0 = costo Andreani; null = ELIMINAR la fila
+//       activo: boolean             // si la fila no se usa como precio de venta
+//     }
+//   ]
+// }
+// `destinos` puede venir vacío o ausente si solo se quiere cambiar el margen.
+// La provincia se upsertea por PK (franja_id, provincia): "Córdoba" y
+// "cordoba" son la misma fila. Para borrar una fila se manda costo: null
+// (además de poder desactivarla con activo: false, que es el soft-delete).
+// ------------------------------------------------------------
+router.put("/destinos", requerirAuth, async (req, res) => {
+  const b = req.body || {};
+
+  // ----- Validación del margen (opcional) -----
+  let margenPct = null;
+  if (b.margen_pct !== undefined && b.margen_pct !== null) {
+    margenPct = Number(b.margen_pct);
+    if (!Number.isInteger(margenPct) || margenPct < 0 || margenPct > 100) {
+      return res.status(400).json({ error: "margen_pct debe ser un entero entre 0 y 100" });
+    }
+  }
+
+  // ----- Validación de los destinos -----
+  if (b.destinos !== undefined && !Array.isArray(b.destinos)) {
+    return res.status(400).json({ error: "destinos debe ser un array" });
+  }
+  const destinos = Array.isArray(b.destinos) ? b.destinos : [];
+
+  const validados = [];
+  for (const d of destinos) {
+    const franjaId = Number(d && d.franja_id);
+    if (!Number.isInteger(franjaId) || franjaId <= 0) {
+      return res.status(400).json({ error: "Cada destino necesita un franja_id entero positivo" });
+    }
+    if (typeof (d && d.provincia) !== "string" || d.provincia.trim() === "") {
+      return res.status(400).json({ error: "Cada destino necesita una provincia (texto no vacío)" });
+    }
+    const provincia = normalizarProvincia(d.provincia);
+
+    // costo: null = eliminar la fila; si viene número, entero >= 0.
+    const esBorrado = d.costo === null;
+    const costo = esBorrado ? null : Number(d.costo);
+    if (!esBorrado && (!Number.isInteger(costo) || costo < 0)) {
+      return res.status(400).json({
+        error: `costo debe ser un entero >= 0 o null para eliminar (provincia: ${provincia})`,
+      });
+    }
+
+    // activo por defecto true; solo se acepta booleano explícito o ausente.
+    const activo = d.activo === undefined ? true : Boolean(d.activo);
+
+    validados.push({ franjaId, provincia, costo, activo });
+  }
+
+  // Que todas las franjas referenciadas existan (evita claves fantasma).
+  const franjasIds = [...new Set(validados.map((d) => d.franjaId))];
+  if (franjasIds.length > 0) {
+    try {
+      const { rows } = await pool.query(
+        "SELECT id FROM tarifas_envio WHERE id = ANY($1)",
+        [franjasIds]
+      );
+      const existentes = new Set(rows.map((r) => r.id));
+      const faltante = franjasIds.find((id) => !existentes.has(id));
+      if (faltante !== undefined) {
+        return res.status(400).json({ error: `franja_id inexistente: ${faltante}` });
+      }
+    } catch (err) {
+      console.error("Error validando franjas de destinos:", err);
+      return res.status(500).json({ error: "Error al validar las franjas" });
+    }
+  }
+
+  // ----- Escritura en transacción (margen + destinos juntos) -----
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+
+    if (margenPct !== null) {
+      await cliente.query(
+        `INSERT INTO envio_config (id, margen_pct) VALUES (1, $1)
+         ON CONFLICT (id) DO UPDATE SET margen_pct = $1`,
+        [margenPct]
+      );
+    }
+
+    for (const d of validados) {
+      if (d.costo === null) {
+        await cliente.query(
+          "DELETE FROM envio_destinos WHERE franja_id = $1 AND provincia = $2",
+          [d.franjaId, d.provincia]
+        );
+      } else {
+        await cliente.query(
+          `INSERT INTO envio_destinos (franja_id, provincia, costo, activo)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (franja_id, provincia)
+           DO UPDATE SET costo = $3, activo = $4`,
+          [d.franjaId, d.provincia, d.costo, d.activo]
+        );
+      }
+    }
+
+    await cliente.query("COMMIT");
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    console.error("Error guardando destinos de envío:", err);
+    cliente.release();
+    return res.status(500).json({ error: "Error al guardar los destinos de envío" });
+  }
+  cliente.release();
+
+  // Respondemos con el estado actualizado (mismo shape que el GET).
+  try {
+    const { rows: configRows } = await pool.query(
+      "SELECT margen_pct FROM envio_config WHERE id = 1"
+    );
+    const { rows: franjas } = await pool.query(
+      "SELECT id, etiqueta, requiere_caja_grande, activa FROM tarifas_envio ORDER BY orden ASC, id ASC"
+    );
+    const { rows: destinos } = await pool.query(
+      "SELECT franja_id, provincia, costo, activo FROM envio_destinos ORDER BY franja_id ASC, provincia ASC"
+    );
+    res.json({
+      margen_pct: configRows[0] ? Number(configRows[0].margen_pct) : 0,
+      franjas,
+      destinos,
+    });
+  } catch (err) {
+    console.error("Error leyendo estado de destinos tras guardar:", err);
+    res.status(500).json({ error: "Destinos guardados, pero no se pudo leer el estado" });
   }
 });
 

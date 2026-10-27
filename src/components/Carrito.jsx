@@ -84,16 +84,11 @@ export default function Carrito({ abierto, onCerrar, items, onCambiarCantidad, o
 
             <div className="carrito-footer">
               <div className="carrito-linea-envio">
-                <span>
-                  Envío <span className="carrito-envio-franja">{envio ? envio.etiqueta : "a calcular"}</span>
-                </span>
-                <span className="carrito-envio-monto">
-                  {envio ? `$${envio.total.toLocaleString("es-AR")}` : "—"}
-                </span>
+                <span>Envío a calcular con tu ubicación</span>
               </div>
               <div className="carrito-total">
-                <span>Total con envío</span>
-                <strong>${(total + (envio ? envio.total : 0)).toLocaleString("es-AR")}</strong>
+                <span>Total productos</span>
+                <strong>${total.toLocaleString("es-AR")}</strong>
               </div>
               <button className="checkout-btn" onClick={onCheckout}>
                 Continuar con la compra →
