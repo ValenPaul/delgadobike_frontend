@@ -631,20 +631,50 @@ function SeccionTarifas() {
     }
   };
 
-  const construirFilasDestinos = (destinosLista, franjaId, margenPct) => {
+  const normalizarProvincia = (provincia = "") => {
+    return String(provincia)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  };
+
+  const construirFilasDestinos = (destinosLista = [], franjaId, margenPct) => {
+    const mapDestinos = new Map(
+      destinosLista.map(d => [`${d.franja_id}|${normalizarProvincia(d.provincia)}`, d])
+    );
+
     const filas = PROVINCIAS_ARGENTINAS.map((provincia) => {
-      const existente = destinosLista.find(d => d.provincia === provincia && d.franja_id === franjaId);
-      const costo = existente ? Number(existente.costo || 0) : 0;
-      const activo = existente ? Boolean(existente.activo) : false;
-      const costoNum = Number(costo) || 0;
+      const key = `${franjaId}|${normalizarProvincia(provincia)}`;
+      let existente = mapDestinos.get(key);
+      if (!existente) {
+        existente = destinosLista.find(
+          d => d.franja_id === franjaId && normalizarProvincia(d.provincia) === normalizarProvincia(provincia)
+        );
+      }
+
+      let costoNum = 0;
+      let activo = false;
+
+      if (existente) {
+        costoNum = Number(existente.costo ?? 0);
+        if (existente.activo === true) activo = true;
+        else if (existente.activo === false) activo = false;
+        else activo = true; // null/undefined -> true por DEFAULT TRUE
+      } else {
+        costoNum = 0;
+        activo = false;
+      }
+
       const precioConMargen = costoNum > 0
         ? Math.ceil(costoNum * (1 + Number(margenPct || 0) / 100) / 100) * 100
         : 0;
+
       return {
         provincia,
         franja_id: franjaId,
         costo: costoNum,
-        activo: Boolean(activo),
+        activo,
         precioConMargen,
       };
     });
@@ -1219,6 +1249,7 @@ function ModalFranja({ franja, onGuardar, onCerrar }) {
 
 // ─── SECCIÓN DESPACHOS ───────────────────────────────────────────────────────
 const METODOS_ENVIO = [
+  { valor: "retiro_local", etiqueta: "Retirar del local" },
   { valor: "sucursal", etiqueta: "Retiro en sucursal" },
   { valor: "domicilio", etiqueta: "Entrega a domicilio" },
   { valor: "link_pago", etiqueta: "Link de pago de Andreani" },
