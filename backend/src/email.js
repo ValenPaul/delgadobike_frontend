@@ -3,6 +3,19 @@ require("dotenv").config();
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+const EMAIL_FROM = process.env.EMAIL_FROM;
+const EMAIL_ADMIN = process.env.EMAIL_ADMIN;
+
+if (!process.env.RESEND_API_KEY) {
+  console.warn("[EMAIL] RESEND_API_KEY no está definido. Los emails no se enviarán.");
+}
+if (!EMAIL_FROM) {
+  console.warn("[EMAIL] EMAIL_FROM no está definido. Usá un dominio verificado en Resend para enviar a clientes reales.");
+}
+if (!EMAIL_ADMIN) {
+  console.warn("[EMAIL] EMAIL_ADMIN no está definido. La notificación al admin no llegará.");
+}
+
 const LOGO_URL = "https://res.cloudinary.com/jgnijxf6/image/upload/v1785875376/logo-sin-fondo-delgadobike_zugg2u.png";
 
 // Dirección del local, mostrada en los emails de pedidos con retiro.
@@ -156,8 +169,12 @@ async function enviarConfirmacionCliente(pedido) {
     </html>
   `;
 
+  if (!EMAIL_FROM) {
+    throw new Error("EMAIL_FROM no está configurado. Verificá un dominio en Resend y setealo en las variables de entorno.");
+  }
+
   const respuesta = await resend.emails.send({
-    from: process.env.EMAIL_FROM,
+    from: EMAIL_FROM,
     to: email,
     subject: `✅ Pedido confirmado #${id} — Delgado Bike Online`,
     html,
@@ -224,15 +241,22 @@ async function enviarNotificacionAdmin(pedido) {
     </html>
   `;
 
+  if (!EMAIL_ADMIN) {
+    throw new Error("EMAIL_ADMIN no está configurado.");
+  }
+  if (!EMAIL_FROM) {
+    throw new Error("EMAIL_FROM no está configurado. Verificá un dominio en Resend y setealo en las variables de entorno.");
+  }
+
   const respuesta = await resend.emails.send({
-    from: process.env.EMAIL_FROM,
-    to: process.env.EMAIL_ADMIN,
+    from: EMAIL_FROM,
+    to: EMAIL_ADMIN,
     subject: retiro
       ? `🛒 Nuevo pedido #${id} — retiro en local ($${total.toLocaleString("es-AR")})`
       : `🛒 Nuevo pedido #${id} — $${total.toLocaleString("es-AR")}`,
     html,
   });
-  return revisarEnvio(respuesta, `de notificación al admin (pedido ${id}, destino: ${process.env.EMAIL_ADMIN})`);
+  return revisarEnvio(respuesta, `de notificación al admin (pedido ${id}, destino: ${EMAIL_ADMIN})`);
 }
 
 // ── Email de tracking al cliente ────────────────────────────────────────────
@@ -315,8 +339,12 @@ async function enviarTrackingCliente(pedido, numeroSeguimiento) {
     </html>
   `;
 
+  if (!EMAIL_FROM) {
+    throw new Error("EMAIL_FROM no está configurado. Verificá un dominio en Resend y setealo en las variables de entorno.");
+  }
+
   const respuesta = await resend.emails.send({
-    from: process.env.EMAIL_FROM,
+    from: EMAIL_FROM,
     to: email,
     subject: `🚚 Tu pedido ${id} está en camino`,
     html,
