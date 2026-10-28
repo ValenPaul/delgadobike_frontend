@@ -731,20 +731,27 @@ ul { list-style: none; }
 }
 .modal-card {
   background: #fff; border-radius: 24px; width: 100%; max-width: 600px;
+  max-height: 90vh; display: flex; flex-direction: column;
   box-shadow: 0 30px 80px rgba(0,0,0,0.2);
+  overflow: hidden;
 }
 .modal-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 1.5rem 1.75rem; border-bottom: 1px solid #EBEBEA;
+  flex-shrink: 0;
 }
 .modal-header h2 { font-size: 1.1rem; font-weight: 700; }
 .modal-cerrar { font-size: 1.1rem; color: #888; padding: 0.25rem 0.5rem; border-radius: 6px; }
 .modal-cerrar:hover { background: #F2F2F0; }
-.modal-body { padding: 1.75rem; display: flex; flex-direction: column; gap: 1rem; }
+.modal-body {
+  padding: 1.75rem; display: flex; flex-direction: column; gap: 1rem;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+}
 .modal-row { display: flex; gap: 1rem; flex-wrap: wrap; }
 .modal-footer {
   display: flex; gap: 0.75rem; justify-content: flex-end;
   padding: 1.25rem 1.75rem; border-top: 1px solid #EBEBEA;
+  flex-shrink: 0;
 }
 .modal-confirmar {
   background: #fff; border-radius: 20px; padding: 2rem; max-width: 360px; text-align: center;
