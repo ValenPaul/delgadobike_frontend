@@ -89,8 +89,8 @@ Backend `backend/.env`:
 - **Nueva categoría**: sumarla en `src/datos.js` (`categorias` y `colores`) y en el filtro de `src/components/Catalogo.jsx`.
 - **Nuevo componente**: crearlo en `src/components/`, renderizarlo desde `App.jsx` y sumar sus clases a `src/index.css`.
 
-## Pendientes (testeo.txt)
-- Verificar envío de emails de confirmación · tarjetas de prueba de MercadoPago OK · cuenta de Resend · ~~SEO de la página~~ (hecho 2026-10-15).
+## No leas este archivo, es solo para mi (testeo.txt)
+
 
 ## Autenticación del admin
 - Login: `POST /api/auth/login` con `{ usuario, password }` → devuelve `{ token }` (HMAC-SHA256 firmado con `AUTH_SECRET`).

@@ -487,3 +487,26 @@ function Field({ label, name, type = "text", value, onChange, error, placeholder
     </div>
   );
 }
+
+function SelectField({ label, name, value, onChange, error, opciones = [], placeholder }) {
+  return (
+    <div className="field">
+      <label htmlFor={name}>{label}</label>
+      <select
+        id={name}
+        name={name}
+        value={value}
+        onChange={onChange}
+        className={error ? "error" : ""}
+      >
+        <option value="">{placeholder || "Seleccioná una opción"}</option>
+        {opciones.map((opcion) => (
+          <option key={opcion} value={opcion}>
+            {opcion}
+          </option>
+        ))}
+      </select>
+      {error && <span className="field-error">{error}</span>}
+    </div>
+  );
+}
