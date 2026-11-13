@@ -4,7 +4,7 @@ export default function Hero() {
       <section className="hero">
         {/* Bicicleta de fondo */}
         <img
-          src="https://res.cloudinary.com/jgnijxf6/image/upload/v1785878705/bicicleta-delgadobikeonline-sinfondo_zzbbok.png"
+          src="https://res.cloudinary.com/qojnuqqz/image/upload/v1794568284/bicicleta-delgadobikeonline-sinfondo_zzbbok.png"
           alt="Bicicleta Delgado Bike"
           className="hero-bike-bg"
         />

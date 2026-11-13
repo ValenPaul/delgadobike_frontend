@@ -1598,7 +1598,7 @@ export default function Admin({ productos, pedidos, onActualizarProductos, onAct
       <aside className="admin-sidebar">
         <div className="admin-brand">
           <img
-            src="https://res.cloudinary.com/jgnijxf6/image/upload/v1785876818/logo-sin-fondo-delgadobike-1_msck1e.png"
+            src="https://res.cloudinary.com/qojnuqqz/image/upload/v1794568285/logo-sin-fondo-delgadobike-1_msck1e.png"
             alt="Delgado Bike Online"
           />
           <div className="admin-brand-sub">Panel admin</div>
