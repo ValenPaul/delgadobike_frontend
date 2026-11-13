@@ -4,7 +4,7 @@ export default function Navbar({ cantidadItems, onAbrirCarrito, onInicio, onNoso
       <div className="navbar-inner">
         <button className="logo" onClick={onInicio}>
           <img
-            src="https://res.cloudinary.com/qojnuqqz/image/upload/v1794568285/logo-sin-fondo-delgadobike-1_msck1e.png"
+            src="https://res.cloudinary.com/qojnuqqz/image/upload/v1794568285/delgadobike/logo-sin-fondo-delgadobike-1_msck1e.png"
             alt="Delgado Bike Online"
             className="logo-img"
           />
