@@ -117,7 +117,7 @@ export default function Confirmacion({ pedido, onVolver }) {
               <strong>3 de Febrero 1223, Crespo, Entre Ríos</strong>
             </p>
             <p>
-              Te avisamos cuando esté listo para retirar. Traé tu número de pedido.
+               Traé tu número de pedido.
             </p>
             {pedido.form.dni && (
               <p className="conf-dni">DNI: {pedido.form.dni}</p>

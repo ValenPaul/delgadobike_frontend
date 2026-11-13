@@ -22,6 +22,24 @@ router.post("/crear-preferencia", async (req, res) => {
   try {
     const preference = new Preference(client);
 
+    // URL pública del backend para el webhook de MercadoPago.
+    // Si BACKEND_URL no está definida o quedó apuntando a localhost (es fácil
+    // copiarla mal desde el .env local), se deduce del propio request: MP
+    // descarta las URLs no públicas y entonces nunca llega la notificación,
+    // el pedido no se crea y el cobro queda huérfano.
+    const backendBase = (
+      process.env.BACKEND_URL && !process.env.BACKEND_URL.includes("localhost")
+        ? process.env.BACKEND_URL
+        : `${req.protocol}://${req.get("host")}`
+    ).replace(/\/+$/, "");
+
+    if (!process.env.BACKEND_URL || process.env.BACKEND_URL.includes("localhost")) {
+      console.warn(
+        "BACKEND_URL no definida o apuntando a localhost: el webhook se arma desde el request ->",
+        backendBase
+      );
+    }
+
     // Retiro en el local: el checkout manda envio.metodo === "retiro_local"
     // (costo 0, etiqueta "Retiro en local"). En ese caso NO agregamos la línea
     // de envío a la preferencia: el cliente solo paga los productos, sin envío
@@ -73,7 +91,7 @@ router.post("/crear-preferencia", async (req, res) => {
           pending: `${process.env.FRONTEND_URL}/confirmacion`,
         },
         ...(esLocal ? {} : { auto_return: "approved" }),
-        notification_url: `${process.env.BACKEND_URL}/api/pagos/webhook`,
+        notification_url: `${backendBase}/api/pagos/webhook`,
         statement_descriptor: "DelgadoBike",
       },
     });
