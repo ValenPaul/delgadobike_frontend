@@ -1583,6 +1583,13 @@ export default function Admin({ productos, pedidos, onActualizarProductos, onAct
   const [logueado, setLogueado] = useState(false);
   const [tab, setTab] = useState("productos");
 
+  // Al abrir el panel, traer los pedidos frescos: así el badge del menú y
+  // las tablas no quedan con la lista que se cargó al inicio de la sesión.
+  useEffect(() => {
+    onRecargarPedidos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (!logueado) return <Login onLogin={() => setLogueado(true)} />;
 
   const totalVentas = pedidos
@@ -1591,7 +1598,15 @@ export default function Admin({ productos, pedidos, onActualizarProductos, onAct
 
   const sinStock = productos.filter(p => p.stock === 0).length;
   const stockBajo = productos.filter(p => p.stock > 0 && p.stock <= 3).length;
-  const pendientes = pedidos.filter(p => p.estado === "pendiente").length;
+  // Pedidos que todavía requieren acción: los que esperan despacho
+  // ("pendiente") y los que esperan retiro en el local ("reservada").
+  // Antes solo se contaba "pendiente", así que las compras con retiro
+  // no movían el badge y quedaba clavado.
+  const pendientes = pedidos.filter(
+    p => p.estado === "pendiente" || p.estado === "reservada"
+  ).length;
+  // Despachos: solo los que tienen envío y esperan salir a Andreani.
+  const porDespachar = pedidos.filter(p => p.estado === "pendiente").length;
 
   return (
     <div className="admin-wrapper">
@@ -1616,8 +1631,8 @@ export default function Admin({ productos, pedidos, onActualizarProductos, onAct
           </button>
           <button className={`admin-nav-item ${tab === "despachos" ? "activo" : ""}`} onClick={() => setTab("despachos")}>
             <span>📬</span> Despachos
-            {pendientes > 0 && (
-              <span className="nav-badge">{pendientes}</span>
+            {porDespachar > 0 && (
+              <span className="nav-badge">{porDespachar}</span>
             )}
           </button>
           <button className={`admin-nav-item ${tab === "envios" ? "activo" : ""}`} onClick={() => setTab("envios")}>
