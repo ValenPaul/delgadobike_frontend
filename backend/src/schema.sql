@@ -131,6 +131,24 @@ CREATE TABLE IF NOT EXISTS envio_config (
   margen_pct INT NOT NULL CHECK (margen_pct >= 0 AND margen_pct <= 100)
 );
 
+-- ============================================================
+-- Encomienda DelgadoBike (migración 2026-11-14)
+-- Localidades donde el dueño entrega personalmente (a menos de 80 km de
+-- Crespo). El checkout ofrece la opción solo para estos destinos y el costo
+-- del envío se coordina por WhatsApp, fuera de MercadoPago.
+-- `localidad_norm` va sin acentos y en minúsculas para comparar robusto.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS envio_zonas_propias (
+  id             SERIAL PRIMARY KEY,
+  localidad      VARCHAR(120) NOT NULL,
+  localidad_norm VARCHAR(120) NOT NULL,
+  provincia      VARCHAR(80)  NOT NULL,
+  codigo_postal  VARCHAR(10),
+  activo         BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (localidad_norm, provincia)
+);
+
 -- Productos de ejemplo para arrancar
 INSERT INTO productos (nombre, categoria, precio, descripcion, stock) VALUES
   ('Trail Xpert 29',    'Montaña', 185000, 'Suspensión delantera 120mm, frenos hidráulicos Shimano, cuadro aluminio 6061.', 5),

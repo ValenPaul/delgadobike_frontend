@@ -11,3 +11,8 @@ export const colores = {
 
 export const ADMIN_USER = "admin";
 export const ADMIN_PASS = "velo2025";
+
+// WhatsApp del negocio en formato internacional (sin +, sin espacios).
+// Se usa en Hero, Contacto, el checkout (Encomienda DelgadoBike) y la
+// confirmación. El mismo número está en backend/src/email.js para los mails.
+export const WHATSAPP_NUMERO = "5493434717485";

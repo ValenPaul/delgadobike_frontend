@@ -397,15 +397,20 @@ const coloresEstado = {
 // Un pedido es de retiro en el local si el desglose de envío dice "Retiro en
 // local" (o si nació reservado). Sirve para mostrar "Retiro en local" en vez
 // de una dirección que viene vacía.
-// OJO: se detecta por `etiqueta` y NO por `metodo`: el backend solo persiste
-// { base, seguro, express, total, etiqueta } en el JSONB (ver
-// backend/src/routes/pagos.js → envioDesglose), así que `metodo` nunca llega
-// a la BD y esa condición nunca matchearía. `etiqueta` sí se guarda y es lo
-// que ya usa email.js. La condición de estado queda como red de seguridad
-// para pedidos viejos sin desglose.
+// Se detecta por `etiqueta` (y por estado como red de seguridad) para cubrir
+// pedidos viejos; los nuevos también persisten `metodo` en el JSONB.
 const esRetiroLocal = (p) =>
   (p.envio_desglose && p.envio_desglose.etiqueta === "Retiro en local") ||
   p.estado === "reservada";
+
+// Encomienda DelgadoBike (envío propio): el dueño entrega personalmente y el
+// costo del envío se coordina por WhatsApp (no se cobra en MercadoPago).
+const esEnvioPropio = (p) =>
+  Boolean(
+    p.envio_desglose &&
+      (p.envio_desglose.metodo === "delgadobike" ||
+        p.envio_desglose.etiqueta === "Encomienda DelgadoBike")
+  );
 
 function SeccionPedidos({ pedidos, onActualizarEstado }) {
   const [filtroEstado, setFiltroEstado] = useState("todos");
@@ -477,7 +482,11 @@ function SeccionPedidos({ pedidos, onActualizarEstado }) {
                 <td>
                   <div>{p.cliente}</div>
                   <div className="tabla-producto-desc">
-                    {esRetiroLocal(p) ? "Retiro en local" : p.localidad}
+                    {esRetiroLocal(p)
+                      ? "Retiro en local"
+                      : esEnvioPropio(p)
+                      ? `🛵 Encomienda DelgadoBike · ${p.localidad || ""}`
+                      : p.localidad}
                   </div>
                 </td>
                 <td>
@@ -824,7 +833,7 @@ function SeccionTarifas() {
       <div className="admin-seccion-header">
         <div>
           <h2>Tarifas de envío</h2>
-          <p>Franjas de peso de Andreani, opcionales y precios por destino</p>
+          <p>Franjas de peso de Andreani, opcionales, precios por destino y zonas de envío propio</p>
         </div>
         {subTabTarifas === "franjas" && (
           <button className="btn-primario" onClick={() => setModalFranja({})}>
@@ -850,6 +859,12 @@ function SeccionTarifas() {
           }}
         >
           Por destino
+        </button>
+        <button
+          className={`admin-subtab ${subTabTarifas === "zonas" ? "activo" : ""}`}
+          onClick={() => setSubTabTarifas("zonas")}
+        >
+          Envío propio
         </button>
       </div>
 
@@ -1091,6 +1106,8 @@ function SeccionTarifas() {
         </div>
       )}
 
+      {subTabTarifas === "zonas" && <ZonasPropias />}
+
       {modalFranja !== undefined && (
         <ModalFranja
           franja={modalFranja.id ? modalFranja : null}
@@ -1247,12 +1264,239 @@ function ModalFranja({ franja, onGuardar, onCerrar }) {
   );
 }
 
+// ─── ZONAS DE ENCOMIENDA DELGADOBIKE ────────────────────────────────────────
+// Localidades donde el dueño entrega personalmente. El checkout ofrece la
+// "Encomienda DelgadoBike" solo para estos destinos y el envío se coordina
+// por WhatsApp (no se cobra en MercadoPago).
+function ZonasPropias() {
+  const [zonas, setZonas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [confirmandoBorrar, setConfirmandoBorrar] = useState(null);
+  const [form, setForm] = useState({
+    localidad: "",
+    provincia: "Entre Ríos",
+    codigo_postal: "",
+  });
+
+  const cargar = async () => {
+    setCargando(true);
+    try {
+      const res = await fetch(`${API}/envios/zonas`, { headers: authHeaders() });
+      if (await manejarErrorAuth(res)) return;
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setZonas(await res.json());
+      setError("");
+    } catch (err) {
+      console.error("Error cargando zonas de envío propio:", err);
+      setError("No se pudieron cargar las zonas de envío propio.");
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => { cargar(); }, []);
+
+  const agregar = async () => {
+    if (!form.localidad.trim()) {
+      alert("Ingresá la localidad.");
+      return;
+    }
+    setGuardando(true);
+    try {
+      const res = await fetch(`${API}/envios/zonas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          localidad: form.localidad.trim(),
+          provincia: form.provincia,
+          codigo_postal: form.codigo_postal.trim(),
+        }),
+      });
+      if (await manejarErrorAuth(res)) return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || `Error ${res.status} al agregar la localidad`);
+        return;
+      }
+      setForm((prev) => ({ ...prev, localidad: "", codigo_postal: "" }));
+      await cargar();
+    } catch (err) {
+      console.error("Error agregando zona de envío propio:", err);
+      alert("No se pudo agregar la localidad. Intentá de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const cambiarActivo = async (z) => {
+    setGuardando(true);
+    try {
+      const res = await fetch(`${API}/envios/zonas/${z.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          localidad: z.localidad,
+          provincia: z.provincia,
+          codigo_postal: z.codigo_postal || "",
+          activo: !z.activo,
+        }),
+      });
+      if (await manejarErrorAuth(res)) return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || `Error ${res.status} al actualizar la localidad`);
+        return;
+      }
+      await cargar();
+    } catch (err) {
+      console.error("Error actualizando zona de envío propio:", err);
+      alert("No se pudo actualizar la localidad. Intentá de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const eliminar = async (id) => {
+    setGuardando(true);
+    try {
+      const res = await fetch(`${API}/envios/zonas/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (await manejarErrorAuth(res)) return;
+      setConfirmandoBorrar(null);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || `Error ${res.status} al eliminar la localidad`);
+        return;
+      }
+      await cargar();
+    } catch (err) {
+      console.error("Error eliminando zona de envío propio:", err);
+      alert("No se pudo eliminar la localidad. Intentá de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // El backend guarda la provincia normalizada; acá la mostramos legible.
+  const provinciaLegible = (p) =>
+    String(p || "").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  return (
+    <div>
+      <p className="zonas-ayuda">
+        <strong>Encomienda DelgadoBike:</strong> localidades donde el dueño
+        entrega personalmente (a menos de 80 km de Crespo). El checkout muestra
+        esta opción solo para estos destinos y el costo del envío se coordina
+        por WhatsApp, fuera de MercadoPago.
+      </p>
+
+      <div className="zonas-form">
+        <div className="admin-field zonas-campo-localidad">
+          <label>Localidad</label>
+          <input
+            value={form.localidad}
+            onChange={(e) => setForm((prev) => ({ ...prev, localidad: e.target.value }))}
+            placeholder="Ej: Paraná"
+          />
+        </div>
+        <div className="admin-field">
+          <label>Provincia</label>
+          <select
+            value={form.provincia}
+            onChange={(e) => setForm((prev) => ({ ...prev, provincia: e.target.value }))}
+          >
+            {PROVINCIAS_ARGENTINAS.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+        <div className="admin-field zonas-campo-cp">
+          <label>CP (opcional)</label>
+          <input
+            value={form.codigo_postal}
+            onChange={(e) => setForm((prev) => ({ ...prev, codigo_postal: e.target.value }))}
+            placeholder="Ej: 3100"
+          />
+        </div>
+        <button className="btn-primario" onClick={agregar} disabled={guardando}>
+          {guardando ? "Guardando..." : "+ Agregar localidad"}
+        </button>
+      </div>
+
+      {cargando && <div className="tabla-vacia">Cargando zonas...</div>}
+      {error && <div className="tabla-vacia admin-error">{error}</div>}
+
+      {!cargando && !error && zonas.length === 0 && (
+        <div className="tabla-vacia">Todavía no hay localidades cargadas.</div>
+      )}
+
+      {!cargando && !error && zonas.length > 0 && (
+        <div className="admin-tabla-wrapper">
+          <table className="admin-tabla">
+            <thead>
+              <tr>
+                <th>Localidad</th>
+                <th>Provincia</th>
+                <th>CP</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {zonas.map((z) => (
+                <tr key={z.id}>
+                  <td><div className="tabla-producto-nombre">{z.localidad}</div></td>
+                  <td>{provinciaLegible(z.provincia)}</td>
+                  <td>{z.codigo_postal || "—"}</td>
+                  <td>
+                    {z.activo
+                      ? <span className="badge-estado disponible">Activa</span>
+                      : <span className="badge-estado sin-stock">Inactiva</span>}
+                  </td>
+                  <td>
+                    <div className="tabla-acciones">
+                      {confirmandoBorrar === z.id ? (
+                        <>
+                          <button className="btn-eliminar" onClick={() => eliminar(z.id)} disabled={guardando}>
+                            Sí, eliminar
+                          </button>
+                          <button className="btn-secundario" onClick={() => setConfirmandoBorrar(null)}>
+                            Cancelar
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button className="btn-secundario" onClick={() => cambiarActivo(z)} disabled={guardando}>
+                            {z.activo ? "Desactivar" : "Activar"}
+                          </button>
+                          <button className="btn-eliminar" onClick={() => setConfirmandoBorrar(z.id)}>
+                            🗑️
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── SECCIÓN DESPACHOS ───────────────────────────────────────────────────────
 const METODOS_ENVIO = [
   { valor: "retiro_local", etiqueta: "Retirar del local" },
   { valor: "sucursal", etiqueta: "Retiro en sucursal" },
   { valor: "domicilio", etiqueta: "Entrega a domicilio" },
   { valor: "link_pago", etiqueta: "Link de pago de Andreani" },
+  { valor: "delgadobike", etiqueta: "Encomienda DelgadoBike" },
 ];
 
 function SeccionDespachos({ onPedidosCambiados }) {
@@ -1297,7 +1541,7 @@ function SeccionDespachos({ onPedidosCambiados }) {
       <div className="admin-seccion-header">
         <div>
           <h2>Despachos</h2>
-          <p>Pedidos con pago aprobado, listos para generar el envío Andreani</p>
+          <p>Pedidos con pago aprobado, listos para despachar (Andreani o envío propio)</p>
         </div>
         <a
           className="btn-secundario"
@@ -1340,6 +1584,17 @@ function TarjetaDespacho({ pedido: p, onDespachado, onActualizado }) {
   const [copiado, setCopiado] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState("");
+
+  // Encomienda DelgadoBike: no hay tracking de Andreani ni costo real que
+  // cargar. Se coordina por WhatsApp y se marca "entregado" cuando llega.
+  const envioPropio = esEnvioPropio(p);
+  const telDigitos = String(p.telefono || "")
+    .replace(/\D/g, "")
+    .replace(/^0+/, "");
+  const waCliente =
+    telDigitos.length >= 10
+      ? `https://wa.me/${telDigitos.startsWith("54") ? telDigitos : `549${telDigitos}`}`
+      : null;
 
   const dirCompleta = [
     `${p.calle || ""} ${p.numero || ""}`.trim(),
@@ -1456,6 +1711,33 @@ function TarjetaDespacho({ pedido: p, onDespachado, onActualizado }) {
     }
   };
 
+  // Encomienda DelgadoBike: no hay tracking ni costo de Andreani que cargar.
+  // El pedido se cierra marcándolo como "entregado" cuando el dueño lo deja
+  // en destino; sale de la lista de despachos apenas se guarda.
+  const marcarEntregado = async () => {
+    setGuardando(true);
+    setMensaje("");
+    try {
+      const res = await fetch(`${API}/pedidos/${p.id}/estado`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ estado: "entregado" }),
+      });
+      if (res.status === 401) { await manejarErrorAuth(res); return; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setMensaje(data.error || `Error ${res.status} al marcar el pedido`);
+        return;
+      }
+      onDespachado(p.id);
+    } catch (err) {
+      console.error("Error marcando pedido entregado:", err);
+      setMensaje("No se pudo marcar el pedido como entregado. Intentá de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   // Margen = lo que cobramos por envío − lo que pagamos a Andreani
   const margen =
     p.envio_cobrado !== null && p.envio_cobrado !== undefined && p.envio_costo_real !== null && p.envio_costo_real !== undefined
@@ -1469,7 +1751,11 @@ function TarjetaDespacho({ pedido: p, onDespachado, onActualizado }) {
           <span className="despacho-id">{p.id}</span>
           <span className="despacho-fecha">{new Date(p.creado_en).toLocaleString("es-AR")}</span>
         </div>
-        <span className="badge-estado pendiente-badge">⏳ pendiente</span>
+        {envioPropio ? (
+          <span className="badge-estado envio-propio-badge">🛵 Encomienda DelgadoBike</span>
+        ) : (
+          <span className="badge-estado pendiente-badge">⏳ pendiente</span>
+        )}
       </div>
 
       <div className="despacho-grid">
@@ -1495,7 +1781,17 @@ function TarjetaDespacho({ pedido: p, onDespachado, onActualizado }) {
         </div>
         <div className="despacho-bloque">
           <h4>Envío</h4>
-          {p.envio_desglose ? (
+          {envioPropio ? (
+            <>
+              <p><strong>Encomienda DelgadoBike</strong></p>
+              <p>El envío <strong>no se cobró</strong> en MercadoPago: se coordina y se cobra por WhatsApp.</p>
+              {waCliente && (
+                <a className="btn-whatsapp despacho-whatsapp" href={waCliente} target="_blank" rel="noreferrer">
+                  WhatsApp del cliente ↗
+                </a>
+              )}
+            </>
+          ) : p.envio_desglose ? (
             <>
               <p>{p.envio_desglose.etiqueta}</p>
               <p>Cobrado al cliente: <strong>${Number(p.envio_cobrado ?? p.envio_desglose.total).toLocaleString("es-AR")}</strong></p>
@@ -1503,20 +1799,24 @@ function TarjetaDespacho({ pedido: p, onDespachado, onActualizado }) {
           ) : (
             <p>Cobrado al cliente: <strong>{p.envio_cobrado != null ? `$${Number(p.envio_cobrado).toLocaleString("es-AR")}` : "—"}</strong></p>
           )}
-          <p>
-            Método: {metodo}
-            {p.tracking_numero ? ` · Tracking: ${p.tracking_numero}` : ""}
-          </p>
-          {p.envio_costo_real != null && (
-            <p>Costo real (Andreani): <strong>${Number(p.envio_costo_real).toLocaleString("es-AR")}</strong></p>
-          )}
-          {margen !== null && (
-            <p>
-              Margen de envío:{" "}
-              <strong className={margen >= 0 ? "despacho-margen-positivo" : "despacho-margen-negativo"}>
-                {margen >= 0 ? "+" : ""}${margen.toLocaleString("es-AR")}
-              </strong>
-            </p>
+          {!envioPropio && (
+            <>
+              <p>
+                Método: {metodo}
+                {p.tracking_numero ? ` · Tracking: ${p.tracking_numero}` : ""}
+              </p>
+              {p.envio_costo_real != null && (
+                <p>Costo real (Andreani): <strong>${Number(p.envio_costo_real).toLocaleString("es-AR")}</strong></p>
+              )}
+              {margen !== null && (
+                <p>
+                  Margen de envío:{" "}
+                  <strong className={margen >= 0 ? "despacho-margen-positivo" : "despacho-margen-negativo"}>
+                    {margen >= 0 ? "+" : ""}${margen.toLocaleString("es-AR")}
+                  </strong>
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1528,51 +1828,74 @@ function TarjetaDespacho({ pedido: p, onDespachado, onActualizado }) {
           {copiado ? "Copiado ✓" : "📋 Copiar datos"}
         </button>
 
-        <div className="admin-field">
-          <label>N° de tracking</label>
-          <input
-            value={tracking}
-            onChange={(e) => setTracking(e.target.value)}
-            placeholder="Ej: E2E-TEST-123"
-          />
-        </div>
+        {envioPropio ? (
+          <>
+            <button className="btn-primario" onClick={marcarEntregado} disabled={guardando}>
+              {guardando ? "Guardando..." : "Marcar entregado"}
+            </button>
+            {waCliente && (
+              <a
+                className="btn-whatsapp despacho-whatsapp"
+                href={waCliente}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Abrir WhatsApp ↗
+              </a>
+            )}
+            <p className="despacho-nota-envio-propio">
+              El costo del envío se arregla por WhatsApp y se cobra aparte.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="admin-field">
+              <label>N° de tracking</label>
+              <input
+                value={tracking}
+                onChange={(e) => setTracking(e.target.value)}
+                placeholder="Ej: E2E-TEST-123"
+              />
+            </div>
 
-        <div className="admin-field">
-          <label>Método de envío</label>
-          <select value={metodo} onChange={(e) => setMetodo(e.target.value)}>
-            {METODOS_ENVIO.map((m) => (
-              <option key={m.valor} value={m.valor}>{m.etiqueta}</option>
-            ))}
-          </select>
-        </div>
+            <div className="admin-field">
+              <label>Método de envío</label>
+              <select value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+                {METODOS_ENVIO.map((m) => (
+                  <option key={m.valor} value={m.valor}>{m.etiqueta}</option>
+                ))}
+              </select>
+            </div>
 
-        <button className="btn-primario" onClick={guardarTracking} disabled={guardando}>
-          {guardando ? "Guardando..." : "Guardar y despachar"}
-        </button>
+            <button className="btn-primario" onClick={guardarTracking} disabled={guardando}>
+              {guardando ? "Guardando..." : "Guardar y despachar"}
+            </button>
 
-        <div className="admin-field">
-          <label>Costo real (ARS)</label>
-          <input
-            type="number"
-            min="0"
-            value={costoReal}
-            onChange={(e) => setCostoReal(e.target.value)}
-            placeholder="Ej: 28000"
-          />
-        </div>
+            <div className="admin-field">
+              <label>Costo real (ARS)</label>
+              <input
+                type="number"
+                min="0"
+                value={costoReal}
+                onChange={(e) => setCostoReal(e.target.value)}
+                placeholder="Ej: 28000"
+              />
+            </div>
 
-        <button className="btn-secundario" onClick={guardarCostoReal} disabled={guardando}>
-          Guardar costo
-        </button>
+            <button className="btn-secundario" onClick={guardarCostoReal} disabled={guardando}>
+              Guardar costo
+            </button>
 
-        <a
-          className="btn-secundario despacho-andreani"
-          href="https://www.andreani.com"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Abrir Andreani ↗
-        </a>
+            <a
+              className="btn-secundario despacho-andreani"
+              href="https://www.andreani.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Abrir Andreani ↗
+            </a>
+          </>
+        )}
       </div>
     </div>
   );

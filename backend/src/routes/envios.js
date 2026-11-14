@@ -2,6 +2,11 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const { requerirAuth } = require("../auth");
+const {
+  normalizarTexto,
+  normalizarCP,
+  zonaPropiaDisponible,
+} = require("../zonasPropias");
 
 // ============================================================
 // Envíos Andreani — cotización + CRUD de tarifas y destinos por provincia.
@@ -38,32 +43,27 @@ const PESO_RESERVA_G = 15000;
 const LADO_EQUIVALENTE_CAJA_GRANDE = 60;
 
 // ------------------------------------------------------------
-// Normaliza una provincia para poder compararla de forma robusta:
-// quita los acentos (NFD + colgar los diacríticos), pasá a minúsculas,
+// Normaliza una provincia o localidad para compararla de forma robusta:
+// quita los acentos (NFD + colgar los diacríticos), pasa a minúsculas,
 // colapsa los espacios de más y recorta los extremos.
 // Así "Córdoba", "CORDOBA" y "  cordoba " matchean la misma fila de
-// `envio_destinos`, sin depender de cómo la tipeó el cliente o el admin.
-// Sin dependencias externas.
+// `envio_destinos` / `envio_zonas_propias`, sin depender de cómo la tipeó
+// el cliente o el admin. Sin dependencias externas.
 // ------------------------------------------------------------
-function normalizarProvincia(texto) {
-  return String(texto)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
+const normalizarProvincia = normalizarTexto;
 
 // ------------------------------------------------------------
 // POST /api/envios/cotizar — PÚBLICA (la llama el checkout antes de pagar)
 // Body: { items: [{ producto_id, cantidad }], seguro?: bool, express?: bool,
-//         provincia?: string }
+//         provincia?: string, localidad?: string, codigoPostal?: string }
 // `provincia` es opcional: si viene, se intenta usar el precio por provincia
 // de `envio_destinos` (costo Andreani + margen global); si no hay fila activa
 // se cae al precio nacional de la franja (igual que antes).
+// `localidad` y `codigoPostal` son opcionales y solo se usan para saber si el
+// destino entra en la zona de Encomienda DelgadoBike (`envio_propio`).
 // ------------------------------------------------------------
 router.post("/cotizar", async (req, res) => {
-  const { items, seguro, express, provincia } = req.body || {};
+  const { items, seguro, express, provincia, localidad, codigoPostal } = req.body || {};
 
   // Validación básica: se necesita al menos un item para cotizar
   if (!Array.isArray(items) || items.length === 0) {
@@ -191,6 +191,15 @@ router.post("/cotizar", async (req, res) => {
     const total =
       base + (seguroAplicado ? precioSeguro : 0) + (expressAplicado ? precioExpress : 0);
 
+    // ¿El destino entra en la zona de envío propio (Encomienda DelgadoBike)?
+    // No depende del peso ni de Andreani: se compara la localidad/CP contra
+    // la lista que administra el dueño desde el panel.
+    const envio_propio = await zonaPropiaDisponible({
+      provincia,
+      localidad,
+      codigoPostal,
+    });
+
     res.json({
       etiqueta: franja.etiqueta,
       peso_g: pesoTotal,
@@ -214,6 +223,9 @@ router.post("/cotizar", async (req, res) => {
         provincia: provinciaNormalizada,
         precio_destino: destinoPrecioProvincia,
       },
+      // El checkout muestra la opción "Encomienda DelgadoBike" solo si
+      // `disponible` es true. `etiqueta` se usa para el resumen/desglose.
+      envio_propio,
     });
   } catch (err) {
     console.error("Error cotizando envío:", err);
@@ -592,6 +604,124 @@ router.put("/destinos", requerirAuth, async (req, res) => {
   } catch (err) {
     console.error("Error leyendo estado de destinos tras guardar:", err);
     res.status(500).json({ error: "Destinos guardados, pero no se pudo leer el estado" });
+  }
+});
+
+// ============================================================
+// Zonas de Encomienda DelgadoBike (envío propio) — CRUD solo admin.
+//
+// El dueño carga acá las localidades donde entrega personalmente. El checkout
+// muestra la opción solo para esos destinos y el costo del envío se arregla
+// por WhatsApp (no se cobra en MercadoPago).
+// ============================================================
+
+function validarZona(body) {
+  const b = body || {};
+  const localidad = typeof b.localidad === "string" ? b.localidad.trim() : "";
+  const provincia =
+    typeof b.provincia === "string" && b.provincia.trim() !== ""
+      ? normalizarTexto(b.provincia)
+      : "entre rios";
+  const codigoPostal = normalizarCP(b.codigo_postal);
+  const activo = b.activo === undefined ? true : Boolean(b.activo);
+
+  if (!localidad) return { error: "La localidad es requerida" };
+  if (localidad.length > 120) {
+    return { error: "La localidad no puede superar los 120 caracteres" };
+  }
+  if (!provincia) return { error: "La provincia es requerida" };
+
+  return {
+    localidad,
+    localidadNorm: normalizarTexto(localidad),
+    provincia,
+    codigoPostal: codigoPostal || null,
+    activo,
+  };
+}
+
+// GET /api/envios/zonas — listado completo (solo admin)
+router.get("/zonas", requerirAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM envio_zonas_propias ORDER BY localidad ASC, id ASC"
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Error obteniendo zonas de envío propio:", err);
+    res.status(500).json({ error: "Error al obtener las zonas de envío propio" });
+  }
+});
+
+// POST /api/envios/zonas — agregar localidad (solo admin)
+router.post("/zonas", requerirAuth, async (req, res) => {
+  const v = validarZona(req.body);
+  if (v.error) return res.status(400).json({ error: v.error });
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO envio_zonas_propias
+         (localidad, localidad_norm, provincia, codigo_postal, activo)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (localidad_norm, provincia) DO NOTHING
+       RETURNING *`,
+      [v.localidad, v.localidadNorm, v.provincia, v.codigoPostal, v.activo]
+    );
+    if (rows.length === 0) {
+      return res.status(409).json({
+        error: "Esa localidad ya está cargada para esa provincia",
+      });
+    }
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error("Error creando zona de envío propio:", err);
+    res.status(500).json({ error: "Error al crear la zona de envío propio" });
+  }
+});
+
+// PUT /api/envios/zonas/:id — editar localidad/CP/activa (solo admin)
+router.put("/zonas/:id", requerirAuth, async (req, res) => {
+  const v = validarZona(req.body);
+  if (v.error) return res.status(400).json({ error: v.error });
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE envio_zonas_propias
+          SET localidad = $1, localidad_norm = $2, provincia = $3,
+              codigo_postal = $4, activo = $5
+        WHERE id = $6
+        RETURNING *`,
+      [v.localidad, v.localidadNorm, v.provincia, v.codigoPostal, v.activo, req.params.id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Zona de envío propio no encontrada" });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === "23505") {
+      return res.status(409).json({
+        error: "Esa localidad ya está cargada para esa provincia",
+      });
+    }
+    console.error("Error actualizando zona de envío propio:", err);
+    res.status(500).json({ error: "Error al actualizar la zona de envío propio" });
+  }
+});
+
+// DELETE /api/envios/zonas/:id — eliminar localidad (solo admin)
+router.delete("/zonas/:id", requerirAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "DELETE FROM envio_zonas_propias WHERE id = $1 RETURNING id",
+      [req.params.id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Zona de envío propio no encontrada" });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Error eliminando zona de envío propio:", err);
+    res.status(500).json({ error: "Error al eliminar la zona de envío propio" });
   }
 });
 

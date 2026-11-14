@@ -5,7 +5,7 @@ const { requerirAuth } = require("../auth");
 const { enviarTrackingCliente } = require("../email");
 
 // Métodos de envío válidos para tracking y costo real
-const METODOS_ENVIO = ["sucursal", "domicilio", "link_pago"];
+const METODOS_ENVIO = ["sucursal", "domicilio", "link_pago", "delgadobike"];
 
 // GET /api/pedidos — listar todos, con los items anidados en una sola query
 // (LEFT JOIN + json_agg; los pedidos sin items quedan con items: [])
@@ -94,7 +94,7 @@ router.post("/:id/tracking", requerirAuth, async (req, res) => {
   let metodoFinal = null;
   if (metodo !== undefined && metodo !== null && metodo !== "") {
     if (!METODOS_ENVIO.includes(metodo)) {
-      return res.status(400).json({ error: "Método de envío inválido (sucursal | domicilio | link_pago)" });
+      return res.status(400).json({ error: "Método de envío inválido (sucursal | domicilio | link_pago | delgadobike)" });
     }
     metodoFinal = metodo;
   }
@@ -142,7 +142,7 @@ router.put("/:id/envio", requerirAuth, async (req, res) => {
   let metodoFinal = null;
   if (metodo !== undefined && metodo !== null && metodo !== "") {
     if (!METODOS_ENVIO.includes(metodo)) {
-      return res.status(400).json({ error: "Método de envío inválido (sucursal | domicilio | link_pago)" });
+      return res.status(400).json({ error: "Método de envío inválido (sucursal | domicilio | link_pago | delgadobike)" });
     }
     metodoFinal = metodo;
   }

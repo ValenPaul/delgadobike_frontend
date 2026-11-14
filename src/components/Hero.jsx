@@ -1,3 +1,5 @@
+import { WHATSAPP_NUMERO } from "../datos";
+
 export default function Hero() {
   return (
     <>
@@ -26,7 +28,7 @@ export default function Hero() {
             <div className="hero-btns">
               <a href="#catalogo" className="hero-cta">VER BICICLETAS</a>
               
-              <a  href="https://wa.me/5493XXXXXXXXX"
+              <a  href={`https://wa.me/${WHATSAPP_NUMERO}`}
                 target="_blank"
                 rel="noreferrer"
                 className="hero-cta-secondary"

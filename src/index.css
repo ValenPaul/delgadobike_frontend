@@ -404,6 +404,29 @@ ul { list-style: none; }
 .metodo-envio-precio { font-size: 0.88rem; font-weight: 700; color: #0066FF; white-space: nowrap; }
 .metodo-envio-precio.gratis { color: #2D7D46; }
 
+/* Encomienda DelgadoBike: tercera opción, ocupa las dos columnas */
+.metodo-envio-ancho { grid-column: 1 / -1; }
+.metodo-envio-card.envio-propio-activo { border-color: #1F9D55; }
+.metodo-envio-precio.coordinar { color: #1F9D55; font-size: 0.8rem; }
+
+/* Botón de WhatsApp (checkout, confirmación y panel) */
+.btn-whatsapp {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  background: #25D366; color: #fff; font-weight: 700; font-size: 0.92rem;
+  padding: 0.75rem 1.4rem; border-radius: 10px; text-decoration: none;
+  border: none; cursor: pointer; transition: background 0.15s, transform 0.15s;
+  box-shadow: 0 4px 14px #25D36640;
+}
+.btn-whatsapp:hover { background: #1EBE5A; transform: translateY(-1px); }
+
+/* Panel de Encomienda DelgadoBike en el checkout */
+.envio-propio-panel { border-color: #25D36655; background: #F6FFFA; }
+.envio-propio-texto { font-size: 0.9rem; color: #555; line-height: 1.6; margin-bottom: 1rem; }
+.envio-propio-nota { font-size: 0.78rem; color: #888; margin-top: 0.6rem; }
+
+/* Resumen del checkout: envío a coordinar por WhatsApp */
+.resumen-coordinar { color: #1F9D55; font-weight: 700; }
+
 /* ===== CONFIRMACIÓN ===== */
 .confirmacion {
   min-height: 90vh; display: flex;
@@ -525,6 +548,52 @@ ul { list-style: none; }
   background: rgba(0, 102, 255, 0.15);
   color: #fff;
   border-color: #0066FF;
+}
+
+/* ─── ZONAS DE ENVÍO PROPIO (ENCOMIENDA DELGADOBIKE) ───────────────────────── */
+.zonas-ayuda {
+  font-size: 0.9rem;
+  color: #a8a8a8;
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+
+.zonas-ayuda strong { color: #fff; }
+
+.zonas-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #111;
+  border: 1px solid #262626;
+  border-radius: 8px;
+}
+
+.zonas-form .admin-field { margin: 0; }
+.zonas-campo-localidad { flex: 1 1 220px; min-width: 180px; }
+.zonas-campo-cp { flex: 0 0 130px; }
+
+.envio-propio-badge {
+  background: rgba(37, 211, 102, 0.18);
+  color: #25D366;
+}
+
+.despacho-whatsapp {
+  background: #25D366;
+  color: #fff !important;
+  text-align: center;
+}
+
+.despacho-whatsapp:hover { background: #1EBE5A; }
+
+.despacho-nota-envio-propio {
+  flex: 1 1 100%;
+  font-size: 0.82rem;
+  color: #a8a8a8;
+  margin: 4px 0 0;
 }
 
 /* ─── TARIFAS POR DESTINO ──────────────────────────────────────────────────── */
@@ -1055,6 +1124,10 @@ ul { list-style: none; }
 }
 .conf-retiro p { font-size: 0.9rem; color: #555; line-height: 1.6; margin-bottom: 0.35rem; }
 .conf-retiro p:last-child { margin-bottom: 0; }
+
+/* Encomienda DelgadoBike: mismo bloque que retiro, en verde WhatsApp */
+.conf-envio-propio { background: #F6FFFA; border-color: #25D36655; }
+.conf-envio-propio .btn-whatsapp { margin-top: 0.75rem; }
 
 /* ===== ADMIN — CAMPOS DE ENVÍO DEL PRODUCTO ===== */
 .modal-envio {

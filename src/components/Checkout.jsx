@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WHATSAPP_NUMERO } from "../datos";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -48,7 +49,7 @@ export default function Checkout({ carrito, onVolver }) {
     calle: "", numero: "", piso: "",
     localidad: "", provincia: "", codigoPostal: "",
   });
-  const [metodoEnvio, setMetodoEnvio] = useState("domicilio"); // "domicilio" | "retiro_local"
+  const [metodoEnvio, setMetodoEnvio] = useState("domicilio"); // "domicilio" | "retiro_local" | "delgadobike"
   const [envio, setEnvio] = useState(null); // última cotización de la API
   const [cotizando, setCotizando] = useState(true);
   const [errorEnvio, setErrorEnvio] = useState("");
@@ -58,6 +59,30 @@ export default function Checkout({ carrito, onVolver }) {
   const [errores, setErrores] = useState({});
 
   const esRetiroLocal = metodoEnvio === "retiro_local";
+  const esEnvioPropio = metodoEnvio === "delgadobike";
+  // La opción "Encomienda DelgadoBike" solo se ofrece si el backend confirmó
+  // que la localidad/CP está dentro de la zona que cubre el dueño.
+  const envioPropioDisponible = Boolean(
+    envio && envio.envio_propio && envio.envio_propio.disponible
+  );
+
+  // Mensaje precargado para coordinar la encomienda por WhatsApp: viaja con
+  // los productos, el total y el destino, así el dueño arranca con contexto.
+  const mensajeEnvioPropio = () => {
+    const detalle = carrito
+      .map((i) => `${i.nombre} x${i.cantidad}`)
+      .join(", ");
+    return (
+      `Hola! Quiero coordinar la Encomienda DelgadoBike.\n` +
+      `Pedido: ${detalle}\n` +
+      `Total de productos: $${subtotal.toLocaleString("es-AR")}\n` +
+      `Destino: ${form.localidad || "—"}, ${form.provincia || "—"}\n` +
+      `¿Cómo coordinamos el envío y el precio?`
+    );
+  };
+  const linkEnvioPropio = `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(
+    mensajeEnvioPropio()
+  )}`;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -65,13 +90,14 @@ export default function Checkout({ carrito, onVolver }) {
     if (errores[name]) setErrores((prev) => ({ ...prev, [name]: "" }));
   };
 
-  // Cotizamos al montar y cada vez que cambian los opcionales elegidos,
-  // el carrito o la provincia de entrega (el precio depende del destino).
-  // La API devuelve etiqueta, base, seguro, express y total (nada hardcodeado).
-  // Con "Retiro en el local" no hay nada que cotizar: cortamos el efecto y
-  // la última cotización de domicilio queda disponible por si el cliente
-  // vuelve a elegir ese método. Sin provincia elegida tampoco cotizamos:
-  // esperamos la dirección completa para no mostrar un precio que puede
+  // Cotizamos al montar y cada vez que cambian los opcionales elegidos, el
+  // carrito, la provincia o la localidad/CP de entrega. Un pequeño retardo
+  // (debounce) evita una llamada al backend por cada tecla mientras el cliente
+  // escribe la dirección. La API devuelve etiqueta, base, seguro, express,
+  // total y `envio_propio` (zona de Encomienda DelgadoBike). Con "Retiro en el
+  // local" no hay nada que cotizar: cortamos el efecto y la última cotización
+  // queda disponible por si vuelve a elegir domicilio. Sin provincia tampoco
+  // cotizamos: esperamos la dirección para no mostrar un precio que puede
   // estar mal para el destino.
   useEffect(() => {
     if (carrito.length === 0) {
@@ -93,9 +119,9 @@ export default function Checkout({ carrito, onVolver }) {
     }
 
     let cancelado = false;
-    setEnvio(null); // la cotización anterior ya no sirve (otro destino)
     setCotizando(true);
-    (async () => {
+    setErrorEnvio("");
+    const timer = setTimeout(async () => {
       try {
         const res = await fetch(`${API}/envios/cotizar`, {
           method: "POST",
@@ -105,6 +131,8 @@ export default function Checkout({ carrito, onVolver }) {
             seguro: conSeguro,
             express: conExpress,
             provincia: form.provincia,
+            localidad: form.localidad,
+            codigoPostal: form.codigoPostal,
           }),
         });
         if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -124,10 +152,24 @@ export default function Checkout({ carrito, onVolver }) {
       } finally {
         if (!cancelado) setCotizando(false);
       }
-    })();
+    }, 350);
 
-    return () => { cancelado = true; };
-  }, [carrito, conSeguro, conExpress, metodoEnvio, form.provincia]);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [carrito, conSeguro, conExpress, metodoEnvio, form.provincia, form.localidad, form.codigoPostal]);
+
+  // Si el cliente eligió Encomienda DelgadoBike y después cambia la dirección
+  // a un destino fuera de la zona, volvemos a "domicilio" (el backend también
+  // rechaza esa combinación al crear la preferencia).
+  useEffect(() => {
+    if (metodoEnvio !== "delgadobike") return;
+    if (!envio) return;
+    if (!envio.envio_propio || !envio.envio_propio.disponible) {
+      setMetodoEnvio("domicilio");
+    }
+  }, [envio, metodoEnvio]);
 
   const validar = () => {
     // Con retiro en el local no hay entrega a domicilio: solo pedimos los
@@ -157,11 +199,17 @@ export default function Checkout({ carrito, onVolver }) {
 
   const handlePagar = async () => {
     if (!validar()) return;
-    // Sin retiro en local exigimos la cotización vigente; con retiro no hay
-    // envío que calcular (el desglose sale en ceros con metodo "retiro_local",
-    // y el backend omite la línea de envío en MercadoPago).
-    if (!esRetiroLocal && !envio) {
+    // Sin retiro en local ni envío propio exigimos la cotización vigente; con
+    // esos dos métodos no hay envío que cobrar en MercadoPago (el desglose
+    // sale en ceros y el backend omite la línea de envío).
+    if (!esRetiroLocal && !esEnvioPropio && !envio) {
       alert("No pudimos calcular el envío todavía. Esperá unos segundos e intentá de nuevo.");
+      return;
+    }
+    if (esEnvioPropio && !envioPropioDisponible) {
+      alert(
+        "La Encomienda DelgadoBike no está disponible para esa localidad. Elegí envío a domicilio o retiro en el local."
+      );
       return;
     }
     setProcesando(true);
@@ -174,6 +222,8 @@ export default function Checkout({ carrito, onVolver }) {
       // base/seguro/express/total/etiqueta alimentan envio_desglose/envio_cobrado.
       // Retiro en el local: todo en cero y `metodo` como señal para el backend
       // (el pedido nace con estado "reservada", esperando retiro).
+      // Encomienda DelgadoBike: igual, todo en cero (el envío se cobra aparte
+      // por WhatsApp) y `metodo` "delgadobike" para que el panel lo distinga.
       const envioDesglose = esRetiroLocal
         ? {
             costo: 0,
@@ -183,6 +233,16 @@ export default function Checkout({ carrito, onVolver }) {
             total: 0,
             etiqueta: "Retiro en local",
             metodo: "retiro_local",
+          }
+        : esEnvioPropio
+        ? {
+            costo: 0,
+            base: 0,
+            seguro: 0,
+            express: 0,
+            total: 0,
+            etiqueta: "Encomienda DelgadoBike",
+            metodo: "delgadobike",
           }
         : {
             costo: envio.total,
@@ -289,6 +349,23 @@ export default function Checkout({ carrito, onVolver }) {
                   </span>
                   <span className="metodo-envio-precio gratis">Gratis</span>
                 </button>
+                {(envioPropioDisponible || esEnvioPropio) && (
+                  <button
+                    type="button"
+                    className={`metodo-envio-card metodo-envio-ancho ${esEnvioPropio ? "activo" : ""}`}
+                    onClick={() => setMetodoEnvio("delgadobike")}
+                    aria-pressed={esEnvioPropio}
+                  >
+                    <span className="metodo-envio-icono">🛵</span>
+                    <span className="metodo-envio-info">
+                      <span className="metodo-envio-nombre">Encomienda DelgadoBike</span>
+                      <span className="metodo-envio-detalle">
+                        Te lo llevamos nosotros — coordinamos por WhatsApp
+                      </span>
+                    </span>
+                    <span className="metodo-envio-precio coordinar">A coordinar</span>
+                  </button>
+                )}
               </div>
             </section>
 
@@ -332,7 +409,7 @@ export default function Checkout({ carrito, onVolver }) {
               </section>
             )}
 
-            {!esRetiroLocal && (
+            {!esRetiroLocal && !esEnvioPropio && (
               <section className="form-section">
                 <h2>Envío Andreani</h2>
                 {(!form.provincia || !form.provincia.trim()) && (
@@ -394,6 +471,28 @@ export default function Checkout({ carrito, onVolver }) {
               </section>
             )}
 
+            {esEnvioPropio && (
+              <section className="form-section envio-propio-panel">
+                <h2>🛵 Encomienda DelgadoBike</h2>
+                <p className="envio-propio-texto">
+                  Te llevamos el pedido nosotros. Coordiná el día y el precio del
+                  envío por WhatsApp; el costo se paga aparte, directo con
+                  DelgadoBike.
+                </p>
+                <a
+                  className="btn-whatsapp"
+                  href={linkEnvioPropio}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Coordinar por WhatsApp ↗
+                </a>
+                <p className="envio-propio-nota">
+                  Abre WhatsApp con el detalle del pedido ya escrito.
+                </p>
+              </section>
+            )}
+
             <section className="form-section">
               <h2>Medio de pago</h2>
               <div className="mp-panel">
@@ -427,6 +526,11 @@ export default function Checkout({ carrito, onVolver }) {
                 <span>🏬 Retiro en el local</span>
                 <span>Gratis</span>
               </div>
+            ) : esEnvioPropio ? (
+              <div className="resumen-linea">
+                <span>🛵 Encomienda DelgadoBike</span>
+                <span className="resumen-coordinar">A coordinar</span>
+              </div>
             ) : (
               <>
                 <div className="resumen-linea">
@@ -450,15 +554,15 @@ export default function Checkout({ carrito, onVolver }) {
             <div className="resumen-total">
               <span>Total</span>
               <strong>
-                ${(subtotal + (esRetiroLocal ? 0 : envio ? envio.total : 0)).toLocaleString("es-AR")}
+                ${(subtotal + (esRetiroLocal || esEnvioPropio ? 0 : envio ? envio.total : 0)).toLocaleString("es-AR")}
               </strong>
             </div>
 
-            {/* Con retiro no hay cotización que esperar: solo frenamos por procesando */}
+            {/* Con retiro o encomienda propia no hay cotización que esperar: solo frenamos por procesando */}
             <button
               className="pagar-btn"
               onClick={handlePagar}
-              disabled={procesando || (!esRetiroLocal && (cotizando || !envio))}
+              disabled={procesando || (!esRetiroLocal && !esEnvioPropio && (cotizando || !envio))}
             >
               {procesando ? "Procesando..." : "Pagar con MercadoPago"}
             </button>

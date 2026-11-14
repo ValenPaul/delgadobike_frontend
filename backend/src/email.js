@@ -21,6 +21,13 @@ const LOGO_URL = "https://res.cloudinary.com/qojnuqqz/image/upload/v1794568285/d
 // Dirección del local, mostrada en los emails de pedidos con retiro.
 const DIR_LOCAL = "3 de Febrero 1223, Crespo, Entre Ríos";
 
+// WhatsApp del negocio (formato internacional, sin + ni espacios). Se usa para
+// que el cliente coordine la Encomienda DelgadoBike (envío propio).
+const WHATSAPP_NUMERO = "5493434717485";
+const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(
+  "Hola! Quiero coordinar la Encomienda DelgadoBike de mi pedido."
+)}`;
+
 // ¿El pedido es de "Retiro en el local"? El checkout lo marca con
 // envio.metodo === "retiro_local", que el webhook traduce a: estado
 // "reservada" + envio_desglose.etiqueta === "Retiro en local" (costo 0).
@@ -34,6 +41,22 @@ function esRetiroLocal(pedido) {
       ? (() => { try { return JSON.parse(pedido.envio_desglose); } catch { return null; } })()
       : pedido.envio_desglose;
   return !!(desglose && desglose.etiqueta === "Retiro en local");
+}
+
+// ¿El pedido es de "Encomienda DelgadoBike" (envío propio)? El checkout manda
+// envio.metodo === "delgadobike" y el webhook lo persiste en el JSONB. Se
+// detecta por metodo o por etiqueta para cubrir pedidos viejos/edge cases.
+function esEnvioPropio(pedido) {
+  if (!pedido) return false;
+  const desglose =
+    typeof pedido.envio_desglose === "string"
+      ? (() => { try { return JSON.parse(pedido.envio_desglose); } catch { return null; } })()
+      : pedido.envio_desglose;
+  if (!desglose) return false;
+  return (
+    desglose.metodo === "delgadobike" ||
+    desglose.etiqueta === "Encomienda DelgadoBike"
+  );
 }
 
 // La API de Resend NO lanza excepción cuando rechaza un envío: devuelve { data, error }.
@@ -55,6 +78,7 @@ function revisarEnvio(respuesta, contexto) {
 async function enviarConfirmacionCliente(pedido) {
   const { id, cliente, email, items, total, costo_envio, localidad, provincia } = pedido;
   const retiro = esRetiroLocal(pedido);
+  const envioPropio = esEnvioPropio(pedido);
 
   const itemsHTML = items.map(item => `
     <tr>
@@ -92,6 +116,8 @@ async function enviarConfirmacionCliente(pedido) {
               <p style="margin:0 0 24px; font-size:15px; color:#555; line-height:1.6;">
                 ${retiro
                   ? "Recibimos tu pedido y ya estamos preparándolo para que lo retires en el local."
+                  : envioPropio
+                  ? "Recibimos tu pedido. Coordinamos la entrega y el costo del envío por WhatsApp."
                   : "Recibimos tu pedido y ya estamos preparándolo."}
               </p>
 
@@ -121,8 +147,8 @@ async function enviarConfirmacionCliente(pedido) {
                   <td style="font-size:14px; color:#555; text-align:right;">$${(total - costo_envio).toLocaleString("es-AR")}</td>
                 </tr>
                 <tr>
-                  <td style="font-size:14px; color:#555; padding:6px 0;">${retiro ? "Retiro en el local" : "Envío Andreani"}</td>
-                  <td style="font-size:14px; color:#555; text-align:right;">$${costo_envio.toLocaleString("es-AR")}</td>
+                  <td style="font-size:14px; color:#555; padding:6px 0;">${retiro ? "Retiro en el local" : envioPropio ? "Encomienda DelgadoBike" : "Envío Andreani"}</td>
+                  <td style="font-size:14px; color:#555; text-align:right;">${envioPropio ? "A coordinar" : `$${costo_envio.toLocaleString("es-AR")}`}</td>
                 </tr>
                 <tr>
                   <td style="font-size:16px; font-weight:800; color:#111; padding:12px 0 0; border-top:2px solid #111;">Total pagado</td>
@@ -141,7 +167,17 @@ async function enviarConfirmacionCliente(pedido) {
                 </p>
                 <p style="margin:8px 0 0; font-size:13px; color:#888;">
                   🏍️ Estamos preparando tu compra. Traé tu número de pedido.
-                </p>` : `
+                </p>` : envioPropio ? `
+                <p style="margin:0 0 8px; font-size:13px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:0.5px;">Encomienda DelgadoBike</p>
+                <p style="margin:0; font-size:14px; color:#333; line-height:1.6;">
+                  ${localidad}, ${provincia}
+                </p>
+                <p style="margin:8px 0 12px; font-size:13px; color:#888;">
+                  🛵 Te llevamos el pedido nosotros. Coordiná el día y el costo del envío por WhatsApp.
+                </p>
+                <a href="${WHATSAPP_URL}" style="display:inline-block; background:#25D366; color:#fff; text-decoration:none; font-weight:700; font-size:14px; padding:12px 22px; border-radius:10px;">
+                  Coordinar por WhatsApp
+                </a>` : `
                 <p style="margin:0 0 8px; font-size:13px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:0.5px;">Dirección de entrega</p>
                 <p style="margin:0; font-size:14px; color:#333; line-height:1.6;">
                   ${localidad}, ${provincia}
@@ -186,6 +222,7 @@ async function enviarConfirmacionCliente(pedido) {
 async function enviarNotificacionAdmin(pedido) {
   const { id, cliente, email, items, total, localidad, provincia } = pedido;
   const retiro = esRetiroLocal(pedido);
+  const envioPropio = esEnvioPropio(pedido);
 
   const itemsTexto = items.map(i => `• ${i.nombre} x${i.cantidad}`).join("<br/>");
 
@@ -224,8 +261,8 @@ async function enviarNotificacionAdmin(pedido) {
                   <p style="margin:0; font-size:14px; color:#333; line-height:1.8;">${itemsTexto}</p>
                 </div>
                 <div style="background:#F7F7F5; border-radius:12px; padding:16px 20px;">
-                  <p style="margin:0 0 4px; font-size:12px; color:#888; font-weight:600; text-transform:uppercase;">${retiro ? "Retiro en el local" : "Destino"}</p>
-                  <p style="margin:0; font-size:14px; color:#333;">${retiro ? `Retiro en el local — ${DIR_LOCAL}` : `${localidad}, ${provincia}`}</p>
+                  <p style="margin:0 0 4px; font-size:12px; color:#888; font-weight:600; text-transform:uppercase;">${retiro ? "Retiro en el local" : envioPropio ? "Encomienda DelgadoBike" : "Destino"}</p>
+                  <p style="margin:0; font-size:14px; color:#333;">${retiro ? `Retiro en el local — ${DIR_LOCAL}` : envioPropio ? `${localidad}, ${provincia} — el envío se coordina por WhatsApp` : `${localidad}, ${provincia}`}</p>
                 </div>
                 <div style="background:#EEF5FF; border-radius:12px; padding:16px 20px; border:1px solid #0066FF30;">
                   <p style="margin:0 0 4px; font-size:12px; color:#0066FF; font-weight:600; text-transform:uppercase;">Total</p>
@@ -253,6 +290,8 @@ async function enviarNotificacionAdmin(pedido) {
     to: EMAIL_ADMIN,
     subject: retiro
       ? `🛒 Nuevo pedido #${id} — retiro en local ($${total.toLocaleString("es-AR")})`
+      : envioPropio
+      ? `🛵 Nuevo pedido #${id} — Encomienda DelgadoBike ($${total.toLocaleString("es-AR")})`
       : `🛒 Nuevo pedido #${id} — $${total.toLocaleString("es-AR")}`,
     html,
   });

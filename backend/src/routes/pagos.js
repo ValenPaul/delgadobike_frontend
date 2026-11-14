@@ -4,6 +4,7 @@ const { MercadoPagoConfig, Preference, Payment } = require("mercadopago");
 const pool = require("../db");
 require("dotenv").config();
 const { enviarConfirmacionCliente, enviarNotificacionAdmin } = require("../email");
+const { zonaPropiaDisponible } = require("../zonasPropias");
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
@@ -48,6 +49,26 @@ router.post("/crear-preferencia", async (req, res) => {
     // pedido con estado "reservada" en vez de "pendiente".
     const esRetiroLocal = envio && envio.metodo === "retiro_local";
 
+    // Encomienda DelgadoBike (envío propio): igual que el retiro, NO se cobra
+    // el envío en MercadoPago. El cliente paga solo los productos y el envío
+    // se coordina/cobra por WhatsApp. Validamos en el servidor que la
+    // localidad/CP esté dentro de la zona habilitada para que nadie pueda
+    // elegir "envío sin costo" desde un destino lejano.
+    const esEnvioPropio = envio && envio.metodo === "delgadobike";
+    if (esEnvioPropio) {
+      const zona = await zonaPropiaDisponible({
+        provincia: form && form.provincia,
+        localidad: form && form.localidad,
+        codigoPostal: form && form.codigoPostal,
+      });
+      if (!zona.disponible) {
+        return res.status(400).json({
+          error:
+            "La Encomienda DelgadoBike no está disponible para ese destino. Elegí envío a domicilio o retiro en el local.",
+        });
+      }
+    }
+
     const itemsProductos = carrito.map((item) => ({
       id: String(item.id),
       title: item.nombre,
@@ -56,7 +77,7 @@ router.post("/crear-preferencia", async (req, res) => {
       currency_id: "ARS",
     }));
 
-    const items = esRetiroLocal
+    const items = esRetiroLocal || esEnvioPropio
       ? itemsProductos
       : [
           ...itemsProductos,
@@ -157,6 +178,10 @@ router.post("/webhook", async (req, res) => {
         express: Math.round(Number(envioData.express)),
         total: Math.round(Number(envioData.total)),
         etiqueta: envioData.etiqueta.trim(),
+        // Persistimos el método (retiro_local / delgadobike / undefined) para
+        // que el panel y los emails puedan distinguir el envío propio sin
+        // depender solo de la etiqueta.
+        ...(typeof envioData.metodo === "string" ? { metodo: envioData.metodo } : {}),
       };
       envioCobrado = envioDesglose.total;
     }
@@ -164,6 +189,8 @@ router.post("/webhook", async (req, res) => {
     // Estado inicial del pedido: si el cliente eligió retiro en el local
     // (envio.metodo === "retiro_local") el pago aprobado deja el pedido
     // "reservada" — reservado, esperando que pase a buscarlo al local.
+    // La Encomienda DelgadoBike (metodo "delgadobike") nace "pendiente": hay
+    // que entregarla, pero el envío se coordina por WhatsApp.
     // Las preferencias viejas (creadas antes de este cambio) no traen `metodo`
     // → envioData.metodo es undefined y el pedido sigue naciendo "pendiente".
     const esRetiroLocal = envioData && envioData.metodo === "retiro_local";

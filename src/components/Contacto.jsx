@@ -1,3 +1,5 @@
+import { WHATSAPP_NUMERO } from "../datos";
+
 export default function Contacto() {
   return (
     <div className="pagina">
@@ -45,12 +47,12 @@ export default function Contacto() {
                 <div>
                   <h3>WhatsApp</h3>
                   
-                  <a  href="https://wa.me/5493XXXXXXXXX"
+                  <a  href={`https://wa.me/${WHATSAPP_NUMERO}`}
                     target="_blank"
                     rel="noreferrer"
                     className="contacto-link"
                   >
-                    +54 9 3XXX XXX XXX
+                    +54 9 343 471 7485
                   </a>
                 </div>
               </div>

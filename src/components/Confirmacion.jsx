@@ -1,3 +1,5 @@
+import { WHATSAPP_NUMERO } from "../datos";
+
 export default function Confirmacion({ pedido, onVolver }) {
   // Sin snapshot de compra (llegaron directos a /confirmacion o el pago no se
   // completó): mostramos un estado vacío con el botón de vuelta a la tienda
@@ -28,6 +30,16 @@ export default function Confirmacion({ pedido, onVolver }) {
   // Retiro en el local: el desglose trae metodo === "retiro_local" (contrato
   // del backend) y el pedido nace reservado en vez de ir por Andreani.
   const esRetiroLocal = envio.metodo === "retiro_local" || pedido.metodo === "retiro_local";
+  // Encomienda DelgadoBike: el envío no se cobra online, se coordina por
+  // WhatsApp. `metodo` viaja en el snapshot del checkout.
+  const esEnvioPropio =
+    envio.metodo === "delgadobike" || pedido.metodo === "delgadobike";
+  const detalleEnvioPropio = (pedido.carrito || [])
+    .map((item) => `${item.nombre} x${item.cantidad}`)
+    .join(", ");
+  const linkEnvioPropio = `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(
+    `Hola! Quiero coordinar la Encomienda DelgadoBike del pedido ${pedido.numeroPedido}: ${detalleEnvioPropio}. Destino: ${pedido.form.localidad}, ${pedido.form.provincia}.`
+  )}`;
 
   return (
     <div className="confirmacion">
@@ -39,6 +51,8 @@ export default function Confirmacion({ pedido, onVolver }) {
           Te enviamos la confirmación a <strong>{pedido.form.email}</strong>.
           {esRetiroLocal ? (
             <>Tu pedido queda reservado en el local hasta que lo pases a buscar.</>
+          ) : esEnvioPropio ? (
+            <> Coordinamos la entrega y el costo del envío por <strong>WhatsApp</strong>.</>
           ) : (
             <> Tu bicicleta viaja por <strong>Andreani</strong>
               {tieneDesglose ? <> — {envio.etiqueta}</> : ""}.
@@ -58,6 +72,11 @@ export default function Confirmacion({ pedido, onVolver }) {
             <div className="conf-item conf-envio">
               <span>🏬 Retiro en el local</span>
               <span>Gratis</span>
+            </div>
+          ) : esEnvioPropio ? (
+            <div className="conf-item conf-envio">
+              <span>🛵 Encomienda DelgadoBike</span>
+              <span>A coordinar</span>
             </div>
           ) : tieneDesglose ? (
             <>
@@ -119,6 +138,28 @@ export default function Confirmacion({ pedido, onVolver }) {
             <p>
                Traé tu número de pedido.
             </p>
+            {pedido.form.dni && (
+              <p className="conf-dni">DNI: {pedido.form.dni}</p>
+            )}
+          </div>
+        ) : esEnvioPropio ? (
+          <div className="conf-retiro conf-envio-propio">
+            <h3>🛵 Encomienda DelgadoBike</h3>
+            <p>
+              <strong>{pedido.form.calle} {pedido.form.numero}</strong>
+            </p>
+            <p>
+              {pedido.form.localidad}, {pedido.form.provincia} ({pedido.form.codigoPostal})
+            </p>
+            <p>Coordinamos el día y el costo del envío por WhatsApp.</p>
+            <a
+              className="btn-whatsapp"
+              href={linkEnvioPropio}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Coordinar por WhatsApp ↗
+            </a>
             {pedido.form.dni && (
               <p className="conf-dni">DNI: {pedido.form.dni}</p>
             )}
