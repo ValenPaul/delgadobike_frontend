@@ -1125,25 +1125,12 @@ ul { list-style: none; }
 .modal-envio-hint { font-size: 0.75rem; color: #888; margin-bottom: 0.75rem; }
 
 /* ===== ADMIN — TARIFAS DE ENVÍO ===== */
-.tarifas-opcionales {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
-  padding: 1.75rem; border-top: 1px solid #EBEBEA; background: #FAFAF9;
-}
-.opcional-card {
-  background: #fff; border: 1.5px solid #EBEBEA; border-radius: 14px;
-  padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;
-}
-.opcional-card h3 { font-size: 0.9rem; font-weight: 700; }
 .opcional-activo {
   display: flex; align-items: center; gap: 0.5rem;
   font-size: 0.85rem; font-weight: 600; color: #444; cursor: pointer;
   align-self: flex-end;
 }
 .opcional-activo input { width: 18px; height: 18px; accent-color: #0066FF; }
-.opcional-guardar {
-  grid-column: 1 / -1; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
-}
-.opcional-hint { font-size: 0.78rem; color: #888; }
 .modal-checks { gap: 1.5rem; align-items: center; }
 .modal-checks .opcional-activo { align-self: flex-start; padding-top: 0.5rem; }
 
@@ -1264,9 +1251,6 @@ ul { list-style: none; }
   .admin-main { padding: 1rem; }
   .admin-metricas { flex-direction: column; }
   .metrica-card { min-width: auto; }
-
-  /* TARIFAS DE ENVÍO */
-  .tarifas-opcionales { grid-template-columns: 1fr; padding: 1.25rem; }
 
   /* DESPACHOS */
   .despachos-lista { padding: 1.25rem; }

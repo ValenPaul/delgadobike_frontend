@@ -560,8 +560,6 @@ const PROVINCIAS_ARGENTINAS = [
 function SeccionTarifas() {
   const [subTabTarifas, setSubTabTarifas] = useState("franjas");
   const [franjas, setFranjas] = useState([]);
-  const [opcionales, setOpcionales] = useState(null);
-  const [formOpcionales, setFormOpcionales] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [modalFranja, setModalFranja] = useState(undefined); // undefined = cerrado
@@ -583,19 +581,7 @@ function SeccionTarifas() {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       const lista = data.franjas || [];
-      const ops = data.opcionales || null;
       setFranjas(lista);
-      setOpcionales(ops);
-      if (ops) {
-        setFormOpcionales({
-          seguro_etiqueta: ops.seguro_etiqueta || "",
-          seguro_precio: ops.seguro_precio ?? 0,
-          seguro_activo: Boolean(ops.seguro_activo),
-          express_etiqueta: ops.express_etiqueta || "",
-          express_precio: ops.express_precio ?? 0,
-          express_activo: Boolean(ops.express_activo),
-        });
-      }
       setError("");
     } catch (err) {
       console.error("Error cargando tarifas:", err);
@@ -786,54 +772,12 @@ function SeccionTarifas() {
     }
   };
 
-  const guardarOpcionales = async () => {
-    if (!formOpcionales) return;
-    if (!formOpcionales.seguro_etiqueta.trim() || !formOpcionales.express_etiqueta.trim()) {
-      alert("Las etiquetas del seguro y del express no pueden quedar vacías.");
-      return;
-    }
-    if (
-      !Number.isInteger(Number(formOpcionales.seguro_precio)) || Number(formOpcionales.seguro_precio) < 0 ||
-      !Number.isInteger(Number(formOpcionales.express_precio)) || Number(formOpcionales.express_precio) < 0
-    ) {
-      alert("Los precios de los opcionales deben ser números enteros mayores o iguales a 0.");
-      return;
-    }
-    try {
-      const res = await fetch(`${API}/envios/opcionales`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          seguro_etiqueta: formOpcionales.seguro_etiqueta.trim(),
-          seguro_precio: Number(formOpcionales.seguro_precio),
-          seguro_activo: Boolean(formOpcionales.seguro_activo),
-          express_etiqueta: formOpcionales.express_etiqueta.trim(),
-          express_precio: Number(formOpcionales.express_precio),
-          express_activo: Boolean(formOpcionales.express_activo),
-        }),
-      });
-      if (await manejarErrorAuth(res)) return;
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.error || `Error ${res.status} al guardar los opcionales`);
-        return;
-      }
-      await cargar();
-    } catch (err) {
-      console.error("Error guardando opcionales:", err);
-      alert("No se pudieron guardar los opcionales. Intentá de nuevo.");
-    }
-  };
-
-  const setOpcional = (campo, valor) =>
-    setFormOpcionales((prev) => ({ ...prev, [campo]: valor }));
-
   return (
     <div className="admin-seccion">
       <div className="admin-seccion-header">
         <div>
           <h2>Tarifas de envío</h2>
-          <p>Franjas de peso de Andreani, opcionales, precios por destino y zonas de envío propio</p>
+          <p>Franjas de peso de Andreani, precios por destino y zonas de envío propio</p>
         </div>
         {subTabTarifas === "franjas" && (
           <button className="btn-primario" onClick={() => setModalFranja({})}>
@@ -847,7 +791,7 @@ function SeccionTarifas() {
           className={`admin-subtab ${subTabTarifas === "franjas" ? "activo" : ""}`}
           onClick={() => setSubTabTarifas("franjas")}
         >
-          Franjas y opcionales
+          Franjas
         </button>
         <button
           className={`admin-subtab ${subTabTarifas === "destinos" ? "activo" : ""}`}
@@ -917,80 +861,6 @@ function SeccionTarifas() {
                   </tbody>
                 </table>
               </div>
-
-              {/* Opcionales: registro único (seguro y express) */}
-              {formOpcionales && (
-                <div className="tarifas-opcionales">
-                  <div className="opcional-card">
-                    <h3>🛡️ Seguro por valor declarado</h3>
-                    <div className="admin-field">
-                      <label>Etiqueta</label>
-                      <input
-                        value={formOpcionales.seguro_etiqueta}
-                        onChange={(e) => setOpcional("seguro_etiqueta", e.target.value)}
-                      />
-                    </div>
-                    <div className="modal-row">
-                      <div className="admin-field">
-                        <label>Precio (ARS)</label>
-                        <input
-                          type="number" min="0"
-                          value={formOpcionales.seguro_precio}
-                          onChange={(e) => setOpcional("seguro_precio", e.target.value)}
-                        />
-                      </div>
-                      <label className="opcional-activo">
-                        <input
-                          type="checkbox"
-                          checked={formOpcionales.seguro_activo}
-                          onChange={(e) => setOpcional("seguro_activo", e.target.checked)}
-                        />
-                        Activo
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="opcional-card">
-                    <h3>⚡ Envío express</h3>
-                    <div className="admin-field">
-                      <label>Etiqueta</label>
-                      <input
-                        value={formOpcionales.express_etiqueta}
-                        onChange={(e) => setOpcional("express_etiqueta", e.target.value)}
-                      />
-                    </div>
-                    <div className="modal-row">
-                      <div className="admin-field">
-                        <label>Precio (ARS)</label>
-                        <input
-                          type="number" min="0"
-                          value={formOpcionales.express_precio}
-                          onChange={(e) => setOpcional("express_precio", e.target.value)}
-                        />
-                      </div>
-                      <label className="opcional-activo">
-                        <input
-                          type="checkbox"
-                          checked={formOpcionales.express_activo}
-                          onChange={(e) => setOpcional("express_activo", e.target.checked)}
-                        />
-                        Activo
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="opcional-guardar">
-                    <button className="btn-primario" onClick={guardarOpcionales}>
-                      Guardar opcionales
-                    </button>
-                    {opcionales && (
-                      <p className="opcional-hint">
-                        Si desactivás un opcional, el checkout deja de mostrarlo como checkbox.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
             </>
           )}
         </>
