@@ -1084,19 +1084,6 @@ ul { list-style: none; }
   border: 1.5px solid #E24B4A30; border-radius: 10px;
 }
 .envio-cargando { font-size: 0.88rem; color: #888; margin-bottom: 0.5rem; }
-.envio-opcionales { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.75rem; }
-.envio-opcional {
-  display: flex; align-items: center; gap: 0.75rem; cursor: pointer;
-  padding: 0.75rem 1rem; border: 1.5px solid #E0E0DC; border-radius: 10px;
-  transition: border-color 0.15s, background 0.15s;
-}
-.envio-opcional:hover { border-color: #0066FF; }
-.envio-opcional.marcado { border-color: #0066FF; background: #F0F5FF; }
-.envio-opcional input { width: 18px; height: 18px; accent-color: #0066FF; flex-shrink: 0; }
-.envio-opcional-info { display: flex; justify-content: space-between; align-items: baseline; flex: 1; gap: 0.75rem; }
-.envio-opcional-nombre { font-size: 0.88rem; font-weight: 600; color: #333; }
-.envio-opcional-precio { font-size: 0.88rem; font-weight: 700; color: #0066FF; white-space: nowrap; }
-.envio-opcional-check { color: #2D7D46; font-weight: 700; }
 .resumen-linea-menor { font-size: 0.82rem; color: #888; }
 
 /* ===== CONFIRMACIÓN — DESGLOSE Y TRACKING ===== */

@@ -53,8 +53,6 @@ export default function Checkout({ carrito, onVolver }) {
   const [envio, setEnvio] = useState(null); // última cotización de la API
   const [cotizando, setCotizando] = useState(true);
   const [errorEnvio, setErrorEnvio] = useState("");
-  const [conSeguro, setConSeguro] = useState(false);
-  const [conExpress, setConExpress] = useState(false);
   const [procesando, setProcesando] = useState(false);
   const [errores, setErrores] = useState({});
 
@@ -128,8 +126,6 @@ export default function Checkout({ carrito, onVolver }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             items: carrito.map((i) => ({ producto_id: i.id, cantidad: i.cantidad })),
-            seguro: conSeguro,
-            express: conExpress,
             provincia: form.provincia,
             localidad: form.localidad,
             codigoPostal: form.codigoPostal,
@@ -140,10 +136,6 @@ export default function Checkout({ carrito, onVolver }) {
         if (cancelado) return;
         setEnvio(data);
         setErrorEnvio("");
-        // Si el backend no aplicó un opcional (quedó inactivo en la tabla),
-        // desmarcamos el checkbox para no prometer un total mentiroso.
-        setConSeguro((prev) => prev && Boolean(data.seguro && data.seguro.aplicado));
-        setConExpress((prev) => prev && Boolean(data.express && data.express.aplicado));
       } catch (err) {
         console.error("Error cotizando envío:", err);
         if (cancelado) return;
@@ -158,7 +150,7 @@ export default function Checkout({ carrito, onVolver }) {
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [carrito, conSeguro, conExpress, metodoEnvio, form.provincia, form.localidad, form.codigoPostal]);
+  }, [carrito, metodoEnvio, form.provincia, form.localidad, form.codigoPostal]);
 
   // Si el cliente eligió Encomienda DelgadoBike y después cambia la dirección
   // a un destino fuera de la zona, volvemos a "domicilio" (el backend también
@@ -426,46 +418,6 @@ export default function Checkout({ carrito, onVolver }) {
                     <span>
                       {envio.etiqueta} — <strong>${envio.total.toLocaleString("es-AR")}</strong>
                     </span>
-                    {(envio.seguro && envio.seguro.aplicado) || (envio.express && envio.express.aplicado) ? (
-                      <span className="plazo">
-                        Incluye{envio.seguro && envio.seguro.aplicado ? ` ${envio.seguro.etiqueta}` : ""}
-                        {envio.seguro && envio.seguro.aplicado && envio.express && envio.express.aplicado ? " y " : ""}
-                        {envio.express && envio.express.aplicado ? envio.express.etiqueta : ""}
-                      </span>
-                    ) : null}
-                  </div>
-                )}
-
-                {envio && (
-                  <div className="envio-opcionales">
-                    {envio.seguro && envio.seguro.activo && (
-                      <label className={`envio-opcional ${conSeguro ? "marcado" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={conSeguro}
-                          onChange={(e) => setConSeguro(e.target.checked)}
-                        />
-                        <span className="envio-opcional-info">
-                          <span className="envio-opcional-nombre">{envio.seguro.etiqueta}</span>
-                          <span className="envio-opcional-precio">+${envio.seguro.precio.toLocaleString("es-AR")}</span>
-                        </span>
-                        {conSeguro && <span className="envio-opcional-check">✓</span>}
-                      </label>
-                    )}
-                    {envio.express && envio.express.activo && (
-                      <label className={`envio-opcional ${conExpress ? "marcado" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={conExpress}
-                          onChange={(e) => setConExpress(e.target.checked)}
-                        />
-                        <span className="envio-opcional-info">
-                          <span className="envio-opcional-nombre">{envio.express.etiqueta}</span>
-                          <span className="envio-opcional-precio">+${envio.express.precio.toLocaleString("es-AR")}</span>
-                        </span>
-                        {conExpress && <span className="envio-opcional-check">✓</span>}
-                      </label>
-                    )}
                   </div>
                 )}
               </section>
