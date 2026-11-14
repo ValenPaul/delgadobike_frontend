@@ -1381,9 +1381,16 @@ function ZonasPropias() {
     }
   };
 
-  // El backend guarda la provincia normalizada; acá la mostramos legible.
+  // El backend guarda la provincia normalizada (sin acentos, minúsculas);
+  // la mostramos con el nombre canónico de la lista de provincias.
+  const normalizar = (texto) =>
+    String(texto || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
   const provinciaLegible = (p) =>
-    String(p || "").replace(/\b\w/g, (c) => c.toUpperCase());
+    PROVINCIAS_ARGENTINAS.find((prov) => normalizar(prov) === normalizar(p)) || p;
 
   return (
     <div>
