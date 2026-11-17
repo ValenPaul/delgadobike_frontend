@@ -1180,6 +1180,22 @@ ul { list-style: none; }
 .btn-copiar.copiado { background: #2D7D46; color: #fff; }
 .despacho-andreani { display: inline-flex; align-items: center; }
 
+/* ===== ADMIN — CATEGORÍAS ===== */
+/* Swatch cuadrado de color en la tabla de categorías */
+.cat-color {
+  display: inline-block; width: 24px; height: 24px;
+  border-radius: 7px; border: 1.5px solid rgba(0,0,0,0.12); vertical-align: middle;
+}
+/* Modal de alta/edición: más angosto que el de producto */
+.modal-categoria { max-width: 420px; }
+.categoria-color-fila { display: flex; align-items: center; gap: 0.75rem; }
+.categoria-color-input {
+  width: 60px; height: 40px; padding: 0.2rem;
+  border: 1.5px solid #E0E0DC; border-radius: 10px;
+  background: #FAFAF9; cursor: pointer;
+}
+.categoria-color-hex { font-size: 0.85rem; color: #888; text-transform: uppercase; }
+
 /* ===== RESPONSIVE MOBILE ===== */
 @media (max-width: 900px) {
   /* HERO */

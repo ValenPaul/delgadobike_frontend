@@ -4,11 +4,12 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
-const authRouter      = require("./routes/auth");
-const productosRouter = require("./routes/productos");
-const pedidosRouter   = require("./routes/pedidos");
-const pagosRouter     = require("./routes/pagos");
-const enviosRouter    = require("./routes/envios");
+const authRouter       = require("./routes/auth");
+const productosRouter  = require("./routes/productos");
+const categoriasRouter = require("./routes/categorias");
+const pedidosRouter    = require("./routes/pedidos");
+const pagosRouter      = require("./routes/pagos");
+const enviosRouter     = require("./routes/envios");
 
 const app = express();
 
@@ -50,11 +51,12 @@ app.use(cors({
 app.use(express.json());
 
 // Rutas (auth primero: no depende de ninguna otra)
-app.use("/api/auth",      authRouter);
-app.use("/api/productos", productosRouter);
-app.use("/api/pedidos",   pedidosRouter);
-app.use("/api/pagos",     pagosRouter);
-app.use("/api/envios",    enviosRouter);
+app.use("/api/auth",       authRouter);
+app.use("/api/productos",  productosRouter);
+app.use("/api/categorias", categoriasRouter);
+app.use("/api/pedidos",    pedidosRouter);
+app.use("/api/pagos",      pagosRouter);
+app.use("/api/envios",     enviosRouter);
 
 // Health check
 app.get("/api/health", (req, res) => res.json({ ok: true }));

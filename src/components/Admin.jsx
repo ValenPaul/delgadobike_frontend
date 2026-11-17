@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { categorias, colores } from "../datos";
+import { colores } from "../datos";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -27,6 +27,23 @@ const manejarErrorAuth = async (res) => {
 const formatoKg = (gramos) => {
   const kg = Number(gramos) / 1000;
   return `${kg.toLocaleString("es-AR", { maximumFractionDigits: 2 })} kg`;
+};
+
+// Color de una categoría (badges de la tabla de productos): primero el que
+// trae GET /api/categorias, después el respaldo de datos.js y por último el
+// azul del tema. Nunca undefined, así no se rompen los estilos inline.
+const colorDeCategoria = (categorias, nombre) => {
+  const cat = (categorias || []).find((c) => c.nombre === nombre);
+  return (cat && cat.color) || colores[nombre] || "#0066FF";
+};
+
+// El <input type="color"> necesita un #RRGGBB válido: expandimos los #RGB
+// (que el backend acepta) y cualquier otra cosa cae en el azul del tema.
+const hexParaInput = (valor) => {
+  const v = String(valor || "");
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v;
+  if (/^#[0-9a-fA-F]{3}$/.test(v)) return `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}`;
+  return "#0066FF";
 };
 
 // ─── LOGIN ───────────────────────────────────────────────────────────────────
@@ -97,10 +114,10 @@ function Login({ onLogin }) {
 // cotizaciones de POST /envios/cotizar. Vacío = sin cargar (peso de reserva).
 const CAMPOS_ENVIO_PRODUCTO = ["peso_g", "alto_cm", "ancho_cm", "largo_cm"];
 
-function ModalProducto({ producto, onGuardar, onCerrar }) {
+function ModalProducto({ producto, categorias = [], onGuardar, onCerrar }) {
   const esNuevo = !producto;
   const defaults = {
-    nombre: "", categoria: "Montaña", precio: "", descripcion: "", stock: "",
+    nombre: "", categoria: categorias[0]?.nombre || "Montaña", precio: "", descripcion: "", stock: "",
     peso_g: "", alto_cm: "", ancho_cm: "", largo_cm: "",
   };
   const [form, setForm] = useState(
@@ -117,6 +134,14 @@ function ModalProducto({ producto, onGuardar, onCerrar }) {
   const [imagen, setImagen] = useState(null);
   const [preview, setPreview] = useState(producto?.imagen_url || null);
   const [errores, setErrores] = useState({});
+
+  // Las opciones del select salen de GET /api/categorias (props). Si el
+  // producto tiene una categoría que ya no está en la lista (fue renombrada
+  // o eliminada), la sumamos igual para que no se pierda al editar.
+  const opcionesCategoria = categorias.map((c) => c.nombre);
+  if (producto && producto.categoria && !opcionesCategoria.includes(producto.categoria)) {
+    opcionesCategoria.push(producto.categoria);
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -197,7 +222,7 @@ function ModalProducto({ producto, onGuardar, onCerrar }) {
             <div className="admin-field">
               <label>Categoría</label>
               <select name="categoria" value={form.categoria} onChange={handleChange}>
-                {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+                {opcionesCategoria.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div className="admin-field">
@@ -261,7 +286,7 @@ function ModalProducto({ producto, onGuardar, onCerrar }) {
 }
 
 // ─── SECCIÓN PRODUCTOS ───────────────────────────────────────────────────────
-function SeccionProductos({ productos, onActualizar }) {
+function SeccionProductos({ productos, categorias = [], onActualizar }) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [productoEditar, setProductoEditar] = useState(null);
   const [confirmarEliminar, setConfirmarEliminar] = useState(null);
@@ -313,14 +338,17 @@ function SeccionProductos({ productos, onActualizar }) {
             </tr>
           </thead>
           <tbody>
-            {productos.map(p => (
+            {productos.map(p => {
+              // Color del badge con fallback (API → datos.js → #0066FF).
+              const colorCat = colorDeCategoria(categorias, p.categoria);
+              return (
               <tr key={p.id} className={p.stock === 0 ? "fila-sin-stock" : ""}>
                 <td>
                   <div className="tabla-producto-nombre">{p.nombre}</div>
                   <div className="tabla-producto-desc">{p.descripcion.substring(0, 50)}...</div>
                 </td>
                 <td>
-                  <span className="badge-categoria" style={{ background: colores[p.categoria] + "20", color: colores[p.categoria] }}>
+                  <span className="badge-categoria" style={{ background: colorCat + "20", color: colorCat }}>
                     {p.categoria}
                   </span>
                 </td>
@@ -353,7 +381,8 @@ function SeccionProductos({ productos, onActualizar }) {
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -361,6 +390,7 @@ function SeccionProductos({ productos, onActualizar }) {
       {modalAbierto && (
         <ModalProducto
           producto={productoEditar}
+          categorias={categorias}
           onGuardar={handleGuardar}
           onCerrar={() => { setModalAbierto(false); setProductoEditar(null); }}
         />
@@ -1778,8 +1808,206 @@ function TarjetaDespacho({ pedido: p, onDespachado, onActualizado }) {
   );
 }
 
+// ─── SECCIÓN CATEGORÍAS ──────────────────────────────────────────────────────
+// ABM de las categorías del catálogo contra GET/POST/PUT/DELETE /categorias.
+// El endpoint es público para lectura; las escrituras mandan el token del
+// admin (authHeaders). Después de cada cambio se llama a onRecargar (que en
+// App.jsx refresca también los filtros del catálogo).
+function SeccionCategorias({ categorias = [], onRecargar }) {
+  // undefined = modal cerrado · {} = alta · {...} = edición
+  const [modalCat, setModalCat] = useState(undefined);
+  const [confirmandoBorrar, setConfirmandoBorrar] = useState(null);
+
+  const guardar = async (datos, id) => {
+    try {
+      const res = await fetch(id ? `${API}/categorias/${id}` : `${API}/categorias`, {
+        method: id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(datos),
+      });
+      if (await manejarErrorAuth(res)) return;
+      if (!res.ok) {
+        // Ej: 409 nombre duplicado o 400 de validación → mostramos el
+        // mensaje del servidor tal cual.
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || `Error ${res.status} al guardar la categoría`);
+        return;
+      }
+      setModalCat(undefined);
+      if (onRecargar) await onRecargar();
+    } catch (err) {
+      console.error("Error guardando categoría:", err);
+      alert("No se pudo guardar la categoría. Intentá de nuevo.");
+    }
+  };
+
+  const eliminar = async (id) => {
+    try {
+      const res = await fetch(`${API}/categorias/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (await manejarErrorAuth(res)) return;
+      setConfirmandoBorrar(null);
+      if (!res.ok) {
+        // Ej: 400 "No se puede eliminar: hay N productos en esa categoría.
+        // Movelos o reasignalos antes." (el backend nunca borra una
+        // categoría con productos): lo mostramos tal cual.
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || `Error ${res.status} al eliminar la categoría`);
+        return;
+      }
+      if (onRecargar) await onRecargar();
+    } catch (err) {
+      console.error("Error eliminando categoría:", err);
+      alert("No se pudo eliminar la categoría. Intentá de nuevo.");
+    }
+  };
+
+  return (
+    <div className="admin-seccion">
+      <div className="admin-seccion-header">
+        <div>
+          <h2>Categorías</h2>
+          <p>{categorias.length} categorías del catálogo</p>
+        </div>
+        <button className="btn-primario" onClick={() => setModalCat({})}>
+          + Agregar categoría
+        </button>
+      </div>
+
+      <div className="admin-tabla-wrapper">
+        <table className="admin-tabla">
+          <thead>
+            <tr>
+              <th>Color</th>
+              <th>Categoría</th>
+              <th>Productos</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {categorias.map((c) => (
+              <tr key={c.id ?? c.nombre}>
+                <td>
+                  <span className="cat-color" style={{ background: c.color || "#0066FF" }} />
+                </td>
+                <td><div className="tabla-producto-nombre">{c.nombre}</div></td>
+                <td>{Number(c.productos) || 0}</td>
+                <td>
+                  <div className="tabla-acciones">
+                    <button className="btn-editar" onClick={() => setModalCat({ ...c })}>
+                      ✏️ Editar
+                    </button>
+                    <button className="btn-eliminar" onClick={() => setConfirmandoBorrar(c)}>
+                      🗑️
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {categorias.length === 0 && (
+        <div className="tabla-vacia">No hay categorías cargadas.</div>
+      )}
+
+      {modalCat !== undefined && (
+        <ModalCategoria
+          categoria={modalCat.id ? modalCat : null}
+          onGuardar={(datos) => guardar(datos, modalCat.id)}
+          onCerrar={() => setModalCat(undefined)}
+        />
+      )}
+
+      {confirmandoBorrar && (
+        <div className="modal-overlay" onClick={() => setConfirmandoBorrar(null)}>
+          <div className="modal-confirmar" onClick={e => e.stopPropagation()}>
+            <h3>¿Eliminar categoría?</h3>
+            <p>
+              Se va a eliminar “{confirmandoBorrar.nombre}”. Esta acción no se puede deshacer.
+              {Number(confirmandoBorrar.productos) > 0 &&
+                ` Hay ${confirmandoBorrar.productos} productos en esa categoría.`}
+            </p>
+            <div className="modal-footer">
+              <button className="btn-secundario" onClick={() => setConfirmandoBorrar(null)}>Cancelar</button>
+              <button className="btn-eliminar-confirm" onClick={() => eliminar(confirmandoBorrar.id)}>
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Modal de alta/edición de una categoría: nombre + color (input nativo).
+function ModalCategoria({ categoria, onGuardar, onCerrar }) {
+  const esNuevo = !categoria;
+  const [nombre, setNombre] = useState(categoria ? categoria.nombre : "");
+  const [color, setColor] = useState(hexParaInput(categoria && categoria.color));
+  const [error, setError] = useState("");
+
+  const handleGuardar = () => {
+    const limpio = nombre.trim();
+    if (!limpio) {
+      setError("El nombre es obligatorio.");
+      return;
+    }
+    if (limpio.length > 100) {
+      setError("El nombre puede tener hasta 100 caracteres.");
+      return;
+    }
+    onGuardar({ nombre: limpio, color });
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onCerrar}>
+      <div className="modal-card modal-categoria" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{esNuevo ? "Agregar categoría" : "Editar categoría"}</h2>
+          <button className="modal-cerrar" onClick={onCerrar}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div className="admin-field">
+            <label>Nombre</label>
+            <input
+              value={nombre}
+              onChange={(e) => { setNombre(e.target.value); if (error) setError(""); }}
+              placeholder="Ej: Montaña"
+              onKeyDown={(e) => e.key === "Enter" && handleGuardar()}
+            />
+            {error && <span className="admin-error">{error}</span>}
+          </div>
+          <div className="admin-field">
+            <label>Color</label>
+            <div className="categoria-color-fila">
+              <input
+                className="categoria-color-input"
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+              />
+              <span className="categoria-color-hex">{color}</span>
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-secundario" onClick={onCerrar}>Cancelar</button>
+          <button className="btn-primario" onClick={handleGuardar}>
+            {esNuevo ? "Agregar categoría" : "Guardar cambios"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN PRINCIPAL ─────────────────────────────────────────────────────────
-export default function Admin({ productos, pedidos, onActualizarProductos, onActualizarEstadoPedido, onRecargarPedidos, onSalir }) {
+export default function Admin({ productos, pedidos, categorias = [], onActualizarProductos, onActualizarEstadoPedido, onRecargarPedidos, onRecargarCategorias, onSalir }) {
   const [logueado, setLogueado] = useState(false);
   const [tab, setTab] = useState("productos");
 
@@ -1822,6 +2050,9 @@ export default function Admin({ productos, pedidos, onActualizarProductos, onAct
         <nav className="admin-nav">
           <button className={`admin-nav-item ${tab === "productos" ? "activo" : ""}`} onClick={() => setTab("productos")}>
             <span>🛒</span> Productos
+          </button>
+          <button className={`admin-nav-item ${tab === "categorias" ? "activo" : ""}`} onClick={() => setTab("categorias")}>
+            <span>🏷️</span> Categorías
           </button>
           <button className={`admin-nav-item ${tab === "pedidos" ? "activo" : ""}`} onClick={() => setTab("pedidos")}>
             <span>📦</span> Pedidos
@@ -1893,7 +2124,14 @@ export default function Admin({ productos, pedidos, onActualizarProductos, onAct
         {tab === "productos" && (
           <SeccionProductos
             productos={productos}
+            categorias={categorias}
             onActualizar={onActualizarProductos}
+          />
+        )}
+        {tab === "categorias" && (
+          <SeccionCategorias
+            categorias={categorias}
+            onRecargar={onRecargarCategorias}
           />
         )}
         {tab === "pedidos" && (

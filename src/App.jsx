@@ -10,7 +10,20 @@ import Admin from "./components/Admin";
 import Nosotros from "./components/Nosotros";
 import Contacto from "./components/Contacto";
 
+import { categorias as categoriasRespaldo, colores } from "./datos";
+
 const API = import.meta.env.VITE_API_URL;
+
+// Respaldo de las categorías si GET /api/categorias no responde: las
+// categorías de datos.js mapeadas al formato del endpoint, para que los
+// filtros del catálogo sigan funcionando igual.
+const categoriasDeRespaldo = () =>
+  categoriasRespaldo.map((nombre) => ({
+    id: null,
+    nombre,
+    color: colores[nombre] || "#0066FF",
+    productos: 0,
+  }));
 
 export default function App() {
   const [carrito, setCarrito] = useState([]);
@@ -18,6 +31,9 @@ export default function App() {
   const [pedidoConfirmado, setPedidoConfirmado] = useState(null);
   const [productos, setProductos] = useState([]);
   const [pedidos, setPedidos] = useState([]);
+  // Categorías del catálogo (GET /api/categorias). Arranca con el respaldo
+  // y apenas carga la API se reemplaza por la lista real.
+  const [categorias, setCategorias] = useState(categoriasDeRespaldo);
   const [cargando, setCargando] = useState(true);
 
   // ── Navegación con historial del browser ──────────────────────────────────
@@ -86,6 +102,21 @@ export default function App() {
 
 
   // ── Cargar datos del backend ───────────────────────────────────────────────
+  // Trae las categorías frescas desde GET /api/categorias. Si algo falla no
+  // rompemos la app: volvemos al respaldo de datos.js y el error queda en
+  // consola (los filtros siguen renderizando igual).
+  const recargarCategorias = async () => {
+    try {
+      const res = await fetch(`${API}/categorias`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setCategorias(data);
+    } catch (err) {
+      console.error("Error cargando categorías (usamos el respaldo de datos.js):", err);
+      setCategorias(categoriasDeRespaldo());
+    }
+  };
+
   useEffect(() => {
     const cargarDatos = async () => {
       try {
@@ -102,6 +133,9 @@ export default function App() {
       }
     };
     cargarDatos();
+    // Las categorías van por su cuenta: si esta llamada falla, la tienda
+    // igual carga productos y pedidos con el respaldo de datos.js.
+    recargarCategorias();
   }, []);
 
   // ── Lógica del carrito ─────────────────────────────────────────────────────
@@ -173,6 +207,9 @@ export default function App() {
 
       const resLista = await fetch(`${API}/productos`);
       setProductos(await resLista.json());
+      // Alta/baja de productos puede cambiar el conteo de cada categoría:
+      // refrescamos la tabla del admin y los filtros del catálogo.
+      recargarCategorias();
     } catch (err) {
       console.error("Error actualizando producto:", err);
     }
@@ -219,9 +256,11 @@ export default function App() {
       <Admin
         productos={productos}
         pedidos={pedidos}
+        categorias={categorias}
         onActualizarProductos={actualizarProductos}
         onActualizarEstadoPedido={actualizarEstadoPedido}
         onRecargarPedidos={recargarPedidos}
+        onRecargarCategorias={recargarCategorias}
         onSalir={() => navegarA("inicio")}
       />
     );
@@ -240,7 +279,7 @@ export default function App() {
       {vista === "inicio" && (
         <>
           <Hero />
-          <Catalogo productos={productos} onAgregarAlCarrito={agregarAlCarrito} />
+          <Catalogo productos={productos} categorias={categorias} onAgregarAlCarrito={agregarAlCarrito} />
         </>
       )}
 

@@ -1,4 +1,8 @@
-// Colores y categorías compartidos entre componentes
+// Categorías y colores de RESPALDO.
+// La fuente de verdad es GET /api/categorias (panel admin → Categorías):
+// App.jsx carga las categorías desde la API y pasa por props a Catalogo y
+// Admin. Estos datos quedan como fallback por si esa llamada falla, para que
+// los filtros del catálogo sigan renderizando (nada de pantallas de error).
 export const categorias = ["Montaña", "Urbana", "Ruta", "Niños", "Gravel"];
 
 export const colores = {

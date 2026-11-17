@@ -3,13 +3,23 @@ import { colores } from "../datos";
 
 const API = import.meta.env.VITE_API_URL;
 
-const categorias = ["Todas", "Montaña", "Urbana", "Ruta", "Niños", "Gravel"];
-
-export default function Catalogo({ productos, onAgregarAlCarrito }) {
+export default function Catalogo({ productos, categorias = [], onAgregarAlCarrito }) {
   const [filtro, setFiltro] = useState("Todas");
   const [agregados, setAgregados] = useState({});
   // Envío cotizado por producto (1 unidad): { [id]: totalARS }.
   const [envios, setEnvios] = useState({});
+
+  // Los filtros salen de GET /api/categorias (props desde App.jsx), siempre
+  // empezando por "Todas", que es la que limpia el filtro.
+  const filtros = ["Todas", ...categorias.map((c) => c.nombre)];
+
+  // Color de una categoría para los estilos inline: el de la API si existe,
+  // si no el respaldo de datos.js y por último el azul del tema. Nunca
+  // undefined, así no se rompen los `${color}15` ni los stroke/fill del SVG.
+  const colorDeCategoria = (nombre) => {
+    const cat = categorias.find((c) => c.nombre === nombre);
+    return (cat && cat.color) || colores[nombre] || "#0066FF";
+  };
 
   // Cotizamos el envío de cada producto con POST /envios/cotizar y lo
   // cacheamos por id. Si cambia la lista de productos, volvemos a cotizar.
@@ -62,7 +72,7 @@ export default function Catalogo({ productos, onAgregarAlCarrito }) {
           <h2 className="catalogo-titulo">Nuestras bicicletas</h2>
         </div>
         <div className="filtros">
-          {categorias.map((cat) => (
+          {filtros.map((cat) => (
             <button
               key={cat}
               className={`filtro-btn ${filtro === cat ? "activo" : ""}`}
@@ -75,24 +85,27 @@ export default function Catalogo({ productos, onAgregarAlCarrito }) {
       </div>
 
       <div className="productos-grid">
-        {filtrados.map((producto) => (
+        {filtrados.map((producto) => {
+          // Color de la categoría con fallback: nunca undefined (ver arriba).
+          const colorCat = colorDeCategoria(producto.categoria);
+          return (
           <div key={producto.id} className={`producto-card ${producto.stock === 0 ? "card-sin-stock" : ""}`}>
-            <div className="producto-img" style={{ background: `${colores[producto.categoria]}15` }}>
+            <div className="producto-img" style={{ background: `${colorCat}15` }}>
               {producto.imagen_url
                 ? <img src={producto.imagen_url} alt={producto.nombre} className="producto-foto" />
                 : (
                   <svg viewBox="0 0 180 130" fill="none" className="producto-svg">
-                    <circle cx="45" cy="88" r="32" stroke={producto.stock === 0 ? "#ccc" : colores[producto.categoria]} strokeWidth="6"/>
-                    <circle cx="135" cy="88" r="32" stroke={producto.stock === 0 ? "#ccc" : colores[producto.categoria]} strokeWidth="6"/>
-                    <circle cx="45" cy="88" r="5" fill={producto.stock === 0 ? "#ccc" : colores[producto.categoria]}/>
-                    <circle cx="135" cy="88" r="5" fill={producto.stock === 0 ? "#ccc" : colores[producto.categoria]}/>
+                    <circle cx="45" cy="88" r="32" stroke={producto.stock === 0 ? "#ccc" : colorCat} strokeWidth="6"/>
+                    <circle cx="135" cy="88" r="32" stroke={producto.stock === 0 ? "#ccc" : colorCat} strokeWidth="6"/>
+                    <circle cx="45" cy="88" r="5" fill={producto.stock === 0 ? "#ccc" : colorCat}/>
+                    <circle cx="135" cy="88" r="5" fill={producto.stock === 0 ? "#ccc" : colorCat}/>
                     <line x1="45" y1="88" x2="82" y2="44" stroke="#222" strokeWidth="5" strokeLinecap="round"/>
                     <line x1="82" y1="44" x2="135" y2="88" stroke="#222" strokeWidth="5" strokeLinecap="round"/>
                     <line x1="82" y1="44" x2="45" y2="88" stroke="#222" strokeWidth="5" strokeLinecap="round"/>
                     <line x1="82" y1="44" x2="112" y2="38" stroke="#222" strokeWidth="5" strokeLinecap="round"/>
                     <line x1="112" y1="38" x2="135" y2="88" stroke="#222" strokeWidth="5" strokeLinecap="round"/>
                     <line x1="72" y1="44" x2="92" y2="44" stroke="#222" strokeWidth="6" strokeLinecap="round"/>
-                    <circle cx="82" cy="44" r="5" fill={producto.stock === 0 ? "#ccc" : colores[producto.categoria]}/>
+                    <circle cx="82" cy="44" r="5" fill={producto.stock === 0 ? "#ccc" : colorCat}/>
                     <line x1="109" y1="35" x2="116" y2="22" stroke="#222" strokeWidth="5" strokeLinecap="round"/>
                     <line x1="113" y1="22" x2="125" y2="24" stroke="#222" strokeWidth="5" strokeLinecap="round"/>
                     <line x1="113" y1="22" x2="101" y2="24" stroke="#222" strokeWidth="5" strokeLinecap="round"/>
@@ -123,7 +136,8 @@ export default function Catalogo({ productos, onAgregarAlCarrito }) {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

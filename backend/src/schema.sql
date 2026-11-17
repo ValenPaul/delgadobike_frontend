@@ -23,6 +23,22 @@ CREATE TABLE IF NOT EXISTS productos (
   creado_en TIMESTAMP DEFAULT NOW()
 );
 
+-- ============================================================
+-- Categorías de bicicletas (migración 2026-11-17)
+-- Fuente de verdad de las categorías y su color (antes estaban hardcodeadas
+-- en el frontend). La relación con productos SE MANTIENE POR NOMBRE:
+-- `productos.categoria` no lleva FK para no romper los productos existentes
+-- ni el filtro del frontend; al renombrar una categoría, el backend actualiza
+-- `productos.categoria` en la misma transacción.
+-- `nombre` es UNIQUE; el backend además compara con LOWER(TRIM(nombre)).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS categorias (
+  id        SERIAL PRIMARY KEY,
+  nombre    VARCHAR(100) NOT NULL UNIQUE,
+  color     VARCHAR(20)  NOT NULL DEFAULT '#0066FF',
+  creado_en TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
 -- Tabla de pedidos
 -- Nota: los datos de despacho (dni, envio_*, tracking) se agregaron en la
 -- migración 2026-10-19; en la base viven al final de la tabla (ADD COLUMN).
@@ -148,6 +164,17 @@ CREATE TABLE IF NOT EXISTS envio_zonas_propias (
   creado_en      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (localidad_norm, provincia)
 );
+
+-- Semilla de categorías (idempotente): las 5 categorías reales con el color
+-- que usa el frontend (src/datos.js). Va antes que la semilla de productos
+-- porque los productos de ejemplo las referencian por nombre.
+INSERT INTO categorias (nombre, color) VALUES
+  ('Montaña', '#2D7D46'),
+  ('Urbana',  '#1A6FA8'),
+  ('Ruta',    '#FF4D00'),
+  ('Niños',   '#9B59B6'),
+  ('Gravel',  '#8B5E3C')
+ON CONFLICT (nombre) DO NOTHING;
 
 -- Productos de ejemplo para arrancar
 INSERT INTO productos (nombre, categoria, precio, descripcion, stock) VALUES
