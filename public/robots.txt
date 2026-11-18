@@ -1,0 +1,16 @@
+# robots.txt - DelgadoBike (https://www.delgadobike-online.com.ar)
+# Le indica a los buscadores (Google, Bing, etc.) que paginas pueden recorrer.
+# Solo se bloquea el panel admin (es una ruta privada y no tiene enlaces).
+#
+# Ojo: checkout y confirmacion NO se bloquean a proposito. Si un buscador no
+# puede recorrer una pagina, tampoco puede leer su <meta name="robots"> y puede
+# indexar la URL vacia. Por eso esas vistas se marcan "noindex" desde App.jsx,
+# que es la forma correcta de sacarlas de los resultados.
+#
+# Se informa la ubicacion del sitemap.
+
+User-agent: *
+Allow: /
+Disallow: /admin
+
+Sitemap: https://www.delgadobike-online.com.ar/sitemap.xml

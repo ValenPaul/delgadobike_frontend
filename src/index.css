@@ -889,24 +889,25 @@ ul { list-style: none; }
   display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 3rem;
 }
 .footer-logo { height: 48px; width: auto; margin-bottom: 1rem; }
-.footer-desc { font-size: 0.88rem; color: #555; line-height: 1.6; max-width: 280px; }
+.footer-desc { font-size: 0.88rem; color: #999; line-height: 1.6; max-width: 280px; }
 .footer-links { display: flex; flex-direction: column; gap: 0.6rem; }
 .footer-links h4 {
   font-size: 0.8rem; font-weight: 700; color: #fff;
   text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;
 }
 .footer-links button, .footer-links a {
-  font-size: 0.88rem; color: #555; text-align: left;
+  font-size: 0.88rem; color: #999; text-align: left;
   transition: color 0.15s; background: none; border: none;
   cursor: pointer; padding: 0; font-family: inherit;
 }
 .footer-links button:hover, .footer-links a:hover { color: #0066FF; }
+.footer-direccion { font-size: 0.88rem; color: #999; line-height: 1.5; margin: 0; }
 .footer-bottom {
   border-top: 1px solid #111; padding: 1.5rem 2rem;
   max-width: 1300px; margin: 0 auto;
   display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
 }
-.footer-bottom p { font-size: 0.78rem; color: #333; }
+.footer-bottom p { font-size: 0.78rem; color: #777; margin: 0; }
 
 /* ===== MODAL LEGAL ===== */
 .modal-legal-card {

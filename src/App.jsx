@@ -9,6 +9,7 @@ import Admin from "./components/Admin";
 
 import Nosotros from "./components/Nosotros";
 import Contacto from "./components/Contacto";
+import Footer from "./components/Footer";
 
 import { categorias as categoriasRespaldo, colores } from "./datos";
 
@@ -70,6 +71,59 @@ export default function App() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  // ── SEO por vista: título, meta robots y meta description ────────────────
+  // El admin se marca noindex; el resto index, follow. Los tags se crean una
+  // sola vez (sin duplicar) si no existen en el HTML.
+  useEffect(() => {
+    const titulos = {
+      inicio: "DelgadoBike | Tienda de bicicletas en Crespo, Entre Ríos",
+      nosotros: "Nosotros | DelgadoBike — Bicicletería en Crespo, Entre Ríos",
+      contacto: "Contacto | DelgadoBike — Crespo, Entre Ríos",
+      checkout: "Finalizar compra | DelgadoBike",
+      confirmacion: "Compra confirmada | DelgadoBike",
+      admin: "Panel admin | DelgadoBike",
+    };
+    const descripciones = {
+      inicio:
+        "DelgadoBike: tienda de bicicletas en Crespo, Entre Ríos, con más de 30 años de trayectoria. Comprá online con envío a todo el país por Andreani.",
+      nosotros:
+        "Conocé la historia de DelgadoBike: más de 30 años como bicicletería en Crespo, Entre Ríos. Servicio técnico, accesorios y bicicletas con envío a todo el país.",
+      contacto:
+        "Contactá a DelgadoBike: 3 de Febrero 1223, Crespo, Entre Ríos (CP 3116). Escribinos por WhatsApp o visitanos en el local.",
+    };
+
+    document.title = titulos[vista] || titulos.inicio;
+
+    // Noindex para lo que no debe aparecer en los resultados: el panel admin
+    // (privado) y las vistas transaccionales (checkout y confirmación no aportan
+    // nada en una búsqueda y su contenido cambia en cada compra). Estas dos
+    // últimas quedan indexables para el crawler a propósito: así puede leer este
+    // mismo meta (ver el comentario en public/robots.txt).
+    const vistasNoIndexables = ["admin", "checkout", "confirmacion"];
+    const contenidoRobots = vistasNoIndexables.includes(vista)
+      ? "noindex, nofollow"
+      : "index, follow, max-image-preview:large";
+    let metaRobots = document.querySelector('meta[name="robots"]');
+    if (!metaRobots) {
+      metaRobots = document.createElement("meta");
+      metaRobots.setAttribute("name", "robots");
+      document.head.appendChild(metaRobots);
+    }
+    metaRobots.setAttribute("content", contenidoRobots);
+
+    let metaDescripcion = document.querySelector('meta[name="description"]');
+    if (!metaDescripcion) {
+      metaDescripcion = document.createElement("meta");
+      metaDescripcion.setAttribute("name", "description");
+      document.head.appendChild(metaDescripcion);
+    }
+    if (descripciones[vista]) {
+      metaDescripcion.setAttribute("content", descripciones[vista]);
+    } else {
+      metaDescripcion.setAttribute("content", descripciones.inicio);
+    }
+  }, [vista]);
 
 
   // Manejar regreso desde MercadoPago
@@ -309,6 +363,13 @@ export default function App() {
           setCarritoAbierto(false);
           navegarA("checkout");
         }}
+      />
+
+      {/* Footer en todas las vistas públicas (el admin tiene su propio layout) */}
+      <Footer
+        onInicio={() => navegarA("inicio")}
+        onNosotros={() => navegarA("nosotros")}
+        onContacto={() => navegarA("contacto")}
       />
     </div>
   );
