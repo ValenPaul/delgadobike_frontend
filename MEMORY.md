@@ -30,7 +30,7 @@
 4. **Seguridad/ops**: revocar la API key `transfer` de Neon (quedó expuesta en el traspaso); rotar `ADMIN_USER`/`ADMIN_PASS` (visibles en logs de Playwright); borrar imágenes de ejemplo de Cloudinary.
 5. Sesión del admin no persiste al refrescar · tokens sin expiración · credenciales muertas en `src/datos.js`.
 6. Futuro: Andreani "Colecta por domicilio" / "Andreani Envíos" con link de pago al cliente.
-7. **SEO operativo (usuario)**: verificar la propiedad en **Google Search Console** y enviar el `sitemap.xml`; crear/optimizar la ficha de **Google Business Profile** (clave para "delgado bike crespo"); sumar enlaces externos (Instagram, directorios locales). Mantener actualizado el `lastmod` del sitemap al agregar páginas.
+7. **SEO operativo (usuario)**: verificar la propiedad en **Google Search Console** (la meta `google-site-verification` ya está agregada en `index.html` y live en prod; falta que el usuario dé a "Verificar" y envíe el sitemap); crear/optimizar la ficha de **Google Business Profile** (clave para "delgado bike crespo"); sumar enlaces externos (Instagram, directorios locales). Mantener actualizado el `lastmod` del sitemap al agregar páginas.
 
 ## Aprendizajes / no reintentar
 - **Andreani no da API** → no scrapear el portal ni depender de tracking externo: el seguimiento que falla jamás puede bloquear el flujo. Zipnova quedó descartado.
